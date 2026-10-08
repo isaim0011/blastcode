@@ -480,3 +480,171 @@ fn ruby_extraction() {
     assert!(sk.contains("class Svc"), "{sk}");
     assert!(sk.contains("def run(a, b = 1)"), "{sk}");
 }
+
+// ---------------------------------------------------------------------------
+// Next-Gen Intelligence Engine: Tests, Verify, Git Coupling, Dead Code
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_get_affected_tests() {
+    let tmp = tempfile::tempdir().unwrap();
+    write(
+        tmp.path(),
+        "src/calc.py",
+        "def add(a, b):\n    \"\"\"Add numbers.\"\"\"\n    return a + b\n\ndef sub(a, b):\n    return a - b\n",
+    );
+    write(
+        tmp.path(),
+        "tests/test_calc.py",
+        "from src.calc import add\n\ndef test_add():\n    assert add(1, 2) == 3\n",
+    );
+    let mut e = engine(tmp.path());
+
+    // 1. Query affected tests by file
+    let v = call_json(&mut e, "get_affected_tests", json!({"file_path": "src/calc.py"}));
+    let files = v["affected_test_files"].as_array().unwrap();
+    assert!(files.iter().any(|f| f.as_str().unwrap() == "tests/test_calc.py"), "{v}");
+    let cmds = v["suggested_commands"].as_array().unwrap();
+    assert!(cmds.iter().any(|c| c.as_str().unwrap().contains("pytest tests/test_calc.py")), "{v}");
+
+    // 2. Query affected tests by symbol
+    let v2 = call_json(&mut e, "get_affected_tests", json!({"symbol_name": "add"}));
+    let callers = v2["affected_test_symbols"].as_array().unwrap();
+    assert!(callers.iter().any(|c| c["test_symbol"] == "test_add"), "{v2}");
+}
+
+#[test]
+fn test_verify_patch() {
+    let tmp = tempfile::tempdir().unwrap();
+    write(
+        tmp.path(),
+        "core/math_util.py",
+        "def compute(x, y):\n    return x + y\n",
+    );
+    let mut e = engine(tmp.path());
+
+    // 1. Valid clean patch
+    let v = call_json(
+        &mut e,
+        "verify_patch",
+        json!({
+            "file_path": "core/math_util.py",
+            "patch": "def compute(x, y):\n    return x + y\n\ndef call_it():\n    return compute(10, 20)\n"
+        }),
+    );
+    assert_eq!(v["valid"], true, "{v}");
+    assert_eq!(v["syntax_errors"].as_array().unwrap().len(), 0);
+    assert_eq!(v["arity_mismatches"].as_array().unwrap().len(), 0);
+
+    // 2. Syntax error patch
+    let v_err = call_json(
+        &mut e,
+        "verify_patch",
+        json!({
+            "file_path": "core/math_util.py",
+            "patch": "def broken_syntax(:\n    return\n"
+        }),
+    );
+    assert_eq!(v_err["valid"], false, "{v_err}");
+    assert!(!v_err["syntax_errors"].as_array().unwrap().is_empty());
+
+    // 3. Arity mismatch patch (calling compute with 1 arg instead of 2)
+    let v_arity = call_json(
+        &mut e,
+        "verify_patch",
+        json!({
+            "file_path": "core/math_util.py",
+            "patch": "def test_caller():\n    return compute(42)\n"
+        }),
+    );
+    assert_eq!(v_arity["valid"], false, "{v_arity}");
+    let mismatches = v_arity["arity_mismatches"].as_array().unwrap();
+    assert!(!mismatches.is_empty(), "{v_arity}");
+    assert_eq!(mismatches[0]["symbol"], "compute");
+    assert_eq!(mismatches[0]["passed_args"], 1);
+    assert_eq!(mismatches[0]["expected_min"], 2);
+}
+
+#[test]
+fn test_get_co_changed_files() {
+    let tmp = tempfile::tempdir().unwrap();
+    // Initialize a git repo and make 2 commits touching paired files
+    let _ = std::process::Command::new("git")
+        .arg("-C")
+        .arg(tmp.path())
+        .arg("init")
+        .output();
+    let _ = std::process::Command::new("git")
+        .arg("-C")
+        .arg(tmp.path())
+        .args(["config", "user.name", "Test"])
+        .output();
+    let _ = std::process::Command::new("git")
+        .arg("-C")
+        .arg(tmp.path())
+        .args(["config", "user.email", "test@example.com"])
+        .output();
+
+    write(tmp.path(), "schema.json", "{}");
+    write(tmp.path(), "models.ts", "export interface User {}");
+    let _ = std::process::Command::new("git")
+        .arg("-C")
+        .arg(tmp.path())
+        .args(["add", "."])
+        .output();
+    let _ = std::process::Command::new("git")
+        .arg("-C")
+        .arg(tmp.path())
+        .args(["commit", "-m", "init schema and models"])
+        .output();
+
+    write(tmp.path(), "schema.json", "{\"version\": 2}");
+    write(tmp.path(), "models.ts", "export interface User { id: string }");
+    let _ = std::process::Command::new("git")
+        .arg("-C")
+        .arg(tmp.path())
+        .args(["commit", "-am", "update schema and models"])
+        .output();
+
+    let mut e = engine(tmp.path());
+    let v = call_json(
+        &mut e,
+        "get_co_changed_files",
+        json!({"file_path": "schema.json"}),
+    );
+    assert_eq!(v["file"], "schema.json");
+    let list = v["co_changed_files"].as_array().unwrap();
+    assert!(!list.is_empty(), "{v}");
+    assert_eq!(list[0]["file"], "models.ts");
+    assert_eq!(list[0]["co_change_count"], 2);
+}
+
+#[test]
+fn test_find_dead_code() {
+    let tmp = tempfile::tempdir().unwrap();
+    write(
+        tmp.path(),
+        "src/util.py",
+        "def dead_orphan_helper():\n    return 42\n\ndef active_helper():\n    return 100\n",
+    );
+    write(
+        tmp.path(),
+        "src/app.py",
+        "from src.util import active_helper\n\ndef main():\n    return active_helper()\n",
+    );
+    let mut e = engine(tmp.path());
+
+    let v = call_json(&mut e, "find_dead_code", json!({}));
+    let candidates = v["candidates"].as_array().unwrap();
+    // dead_orphan_helper should be flagged as dead
+    assert!(
+        candidates.iter().any(|c| c["name"].as_str().unwrap().contains("dead_orphan_helper")),
+        "{v}"
+    );
+    // active_helper should NOT be flagged as dead
+    assert!(
+        !candidates.iter().any(|c| c["name"].as_str().unwrap().contains("active_helper")),
+        "{v}"
+    );
+}
+

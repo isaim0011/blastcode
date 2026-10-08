@@ -609,3 +609,291 @@ pub fn file_context(conn: &Connection, file: &str) -> Result<String> {
         "recent_changes": recent,
     }))?)
 }
+
+// ----------------------------------------------------------- affected_tests
+
+pub fn is_test_file(path: &str) -> bool {
+    let p = path.replace('\\', "/").to_lowercase();
+    let file_name = p.rsplit('/').next().unwrap_or(&p);
+
+    if p.starts_with("tests/")
+        || p.contains("/tests/")
+        || p.starts_with("test/")
+        || p.contains("/test/")
+        || p.contains("/__tests__/")
+        || p.starts_with("spec/")
+        || p.contains("/spec/")
+    {
+        return true;
+    }
+
+    file_name.starts_with("test_")
+        || file_name.ends_with("_test.py")
+        || file_name.ends_with("_test.go")
+        || file_name.ends_with("_test.rs")
+        || file_name.ends_with(".test.ts")
+        || file_name.ends_with(".spec.ts")
+        || file_name.ends_with(".test.tsx")
+        || file_name.ends_with(".spec.tsx")
+        || file_name.ends_with(".test.js")
+        || file_name.ends_with(".spec.js")
+        || file_name.ends_with(".test.jsx")
+        || file_name.ends_with(".spec.jsx")
+        || file_name.ends_with("test.java")
+        || file_name.ends_with("tests.java")
+        || file_name.ends_with("testcase.java")
+        || file_name.ends_with("test.cs")
+        || file_name.ends_with("tests.cs")
+        || file_name.ends_with("test.php")
+        || file_name.ends_with("_spec.rb")
+        || file_name.ends_with("_test.rb")
+}
+
+pub fn suggested_test_command(test_file: &str, test_symbol: Option<&str>) -> String {
+    let p = test_file.replace('\\', "/");
+    let ext = p.rsplit('.').next().unwrap_or("");
+    let stem = p.rsplit('/').next().unwrap_or(&p).trim_end_matches(&format!(".{ext}"));
+
+    match ext {
+        "py" => {
+            if let Some(sym) = test_symbol {
+                format!("pytest {p} -k {sym}")
+            } else {
+                format!("pytest {p}")
+            }
+        }
+        "rs" => {
+            if let Some(sym) = test_symbol {
+                if p.starts_with("tests/") {
+                    format!("cargo test --test {stem} {sym}")
+                } else {
+                    format!("cargo test {sym}")
+                }
+            } else if p.starts_with("tests/") {
+                format!("cargo test --test {stem}")
+            } else {
+                "cargo test".to_string()
+            }
+        }
+        "go" => {
+            let dir = p.rsplit_once('/').map(|(d, _)| d).unwrap_or(".");
+            if let Some(sym) = test_symbol {
+                format!("go test ./{dir} -run {sym}")
+            } else {
+                format!("go test ./{dir}")
+            }
+        }
+        "ts" | "tsx" | "js" | "jsx" => {
+            if let Some(sym) = test_symbol {
+                format!("npm test -- {p} -t {sym}")
+            } else {
+                format!("npm test -- {p}")
+            }
+        }
+        "java" => {
+            if let Some(sym) = test_symbol {
+                format!("mvn test -Dtest={stem}#{sym}")
+            } else {
+                format!("mvn test -Dtest={stem}")
+            }
+        }
+        "cs" => {
+            if let Some(sym) = test_symbol {
+                format!("dotnet test --filter FullyQualifiedName~{sym}")
+            } else {
+                "dotnet test".to_string()
+            }
+        }
+        "php" => {
+            if let Some(sym) = test_symbol {
+                format!("vendor/bin/phpunit {p} --filter {sym}")
+            } else {
+                format!("vendor/bin/phpunit {p}")
+            }
+        }
+        "rb" => {
+            if let Some(sym) = test_symbol {
+                format!("bundle exec rspec {p} -e {sym}")
+            } else {
+                format!("bundle exec rspec {p}")
+            }
+        }
+        _ => format!("test {p}"),
+    }
+}
+
+pub fn affected_tests(
+    conn: &Connection,
+    file_path: Option<&str>,
+    symbol_name: Option<&str>,
+) -> Result<String> {
+    if file_path.is_none() && symbol_name.is_none() {
+        bail!("at least one of file_path or symbol_name must be provided");
+    }
+
+    let resolver = Resolver::new(conn, vec![])?;
+    let mut affected_files = HashSet::new();
+    let mut test_symbols = Vec::new();
+    let mut suggested_cmds = HashSet::new();
+
+    let mut defs = Vec::new();
+    if let Some(sym) = symbol_name {
+        defs = find_defs(conn, sym, file_path)?;
+    } else if let Some(f) = file_path {
+        let mut st = conn.prepare(&format!(
+            "SELECT {SYM_COLS} FROM symbols WHERE file=?1 AND kind<>'impl'"
+        ))?;
+        defs = st.query_map([f], sym_from_row)?.collect::<rusqlite::Result<Vec<_>>>()?;
+    }
+
+    for def in &defs {
+        let (callers, _) = resolver.callers(def)?;
+        for h in callers {
+            let is_tf = is_test_file(&h.file);
+            let is_tsym = h.enclosing.as_ref().map_or(false, |e| {
+                let lower = e.to_lowercase();
+                lower.starts_with("test") || lower.contains("test")
+            });
+
+            if is_tf || is_tsym {
+                affected_files.insert(h.file.clone());
+                let enc_name = h.enclosing.clone().unwrap_or_else(|| "test".to_string());
+                suggested_cmds.insert(suggested_test_command(&h.file, Some(&enc_name)));
+                test_symbols.push(json!({
+                    "test_file": h.file,
+                    "test_symbol": enc_name,
+                    "line": h.line,
+                    "target_symbol": def.qualname,
+                    "confidence": h.confidence.as_str()
+                }));
+            }
+        }
+    }
+
+    if let Some(f) = file_path {
+        let mut ist = conn.prepare(
+            "SELECT file, line FROM imports WHERE original LIKE ?1 OR module LIKE ?1",
+        )?;
+        let stem = f.rsplit('/').next().unwrap_or(f);
+        let like_pat = format!("%{}%", like_escape(stem));
+        let imp_rows = ist.query_map([like_pat], |r| Ok((r.get::<_, String>(0)?, r.get::<_, u32>(1)?)))?;
+        for row in imp_rows.flatten() {
+            let (imp_file, line) = row;
+            if imp_file != f && is_test_file(&imp_file) {
+                if affected_files.insert(imp_file.clone()) {
+                    suggested_cmds.insert(suggested_test_command(&imp_file, None));
+                    test_symbols.push(json!({
+                        "test_file": imp_file,
+                        "test_symbol": "<import>",
+                        "line": line,
+                        "target_symbol": f,
+                        "confidence": "probable"
+                    }));
+                }
+            }
+        }
+    }
+
+    let mut files_vec: Vec<String> = affected_files.into_iter().collect();
+    files_vec.sort();
+
+    let mut cmds_vec: Vec<String> = suggested_cmds.into_iter().collect();
+    cmds_vec.sort();
+
+    Ok(serde_json::to_string(&json!({
+        "target": {
+            "file": file_path,
+            "symbol": symbol_name
+        },
+        "affected_test_files": files_vec,
+        "affected_test_symbols": test_symbols,
+        "suggested_commands": cmds_vec,
+        "summary": format!("Found {} affected test files and {} test callers.", files_vec.len(), test_symbols.len())
+    }))?)
+}
+
+// ------------------------------------------------------------- find_dead_code
+
+pub fn find_dead_code(
+    conn: &Connection,
+    path_prefix: Option<&str>,
+    limit: usize,
+) -> Result<String> {
+    let mut sql = format!(
+        "SELECT {SYM_COLS} FROM symbols s
+         WHERE s.kind IN ('function', 'method', 'class', 'struct', 'enum', 'interface', 'trait')
+           AND s.depth <= 1"
+    );
+    let mut args: Vec<String> = Vec::new();
+    if let Some(p) = path_prefix {
+        args.push(format!("{}%", like_escape(p.trim_start_matches("./"))));
+        sql.push_str(&format!(" AND s.file LIKE ?{} ESCAPE '\\'", args.len()));
+    }
+    sql.push_str(" ORDER BY s.exported ASC, s.file, s.start_line");
+
+    let mut st = conn.prepare(&sql)?;
+    let candidates: Vec<SymRow> = st
+        .query_map(params_from_iter(args.iter()), sym_from_row)?
+        .collect::<rusqlite::Result<_>>()?;
+
+    let mut ref_st = conn.prepare("SELECT count(*) FROM refs WHERE name=?1")?;
+    let mut imp_st = conn.prepare("SELECT count(*) FROM imports WHERE original=?1 OR local=?1")?;
+
+    let ignored_names: &[&str] = &[
+        "main", "init", "run", "real_main", "new", "default", "handler", "execute",
+        "activate", "deactivate", "setup", "teardown", "start", "stop", "close",
+        "dispose", "from", "into", "as_ref", "clone", "to_string", "fmt",
+    ];
+
+    let mut dead = Vec::new();
+    for s in candidates {
+        if is_test_file(&s.file) {
+            continue;
+        }
+        let lower = s.name.to_lowercase();
+        if ignored_names.contains(&lower.as_str())
+            || lower.starts_with("test_")
+            || lower.starts_with("test")
+            || lower.starts_with("__")
+            || lower.starts_with("on_")
+            || lower.starts_with("handle_")
+        {
+            continue;
+        }
+
+        let ref_count: i64 = ref_st.query_row([&s.name], |r| r.get(0))?;
+        if ref_count > 0 {
+            continue;
+        }
+        let imp_count: i64 = imp_st.query_row([&s.name], |r| r.get(0))?;
+        if imp_count > 0 {
+            continue;
+        }
+
+        let confidence = if s.exported {
+            Confidence::Heuristic
+        } else {
+            Confidence::Probable
+        };
+
+        dead.push(json!({
+            "name": s.qualname,
+            "file": s.file,
+            "line": s.start_line,
+            "kind": s.kind,
+            "signature": s.signature,
+            "exported": s.exported,
+            "confidence": confidence.as_str()
+        }));
+
+        if dead.len() >= limit.clamp(1, 200) {
+            break;
+        }
+    }
+
+    Ok(serde_json::to_string(&json!({
+        "count": dead.len(),
+        "candidates": dead,
+        "note": "Probable indicates internal unreferenced symbols; Heuristic indicates unreferenced exported symbols."
+    }))?)
+}

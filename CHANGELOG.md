@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.2.0] - 2026-10-09
+
+### Added
+- **Affected Test Discovery & Runner Generation (`get_affected_tests`)**:
+  - Automatically identifies all unit and integration test files & test functions covering any modified file or symbol across 10 programming languages.
+  - Generates the exact language-specific CLI test runner command (`cargo test`, `pytest`, `go test`, `npm test`, `mvn test`, `dotnet test`, `phpunit`, `rspec`).
+- **Pre-Flight AST & Arity Patch Validator (`verify_patch`)**:
+  - In-memory validation of proposed code edits before writing to disk.
+  - Tree-sitter syntax parsing catches broken syntax tokens without disk I/O.
+  - Call-site arity checks against indexed SQLite signatures flag incorrect parameter counts before code is saved.
+- **Git Commit Co-Change Coupling Intelligence (`get_co_changed_files`)**:
+  - Mines Git commit history to discover files that frequently change together.
+  - Discovers implicit, non-syntactic dependencies (e.g. schema migrations, paired types, documentation).
+- **Dead & Orphaned Symbol Graph Analysis (`find_dead_code`)**:
+  - Detects unreferenced functions, classes, and structs with zero callers, type usages, and imports across the entire workspace.
+  - Categorizes confidence levels (`probable` for internal symbols, `heuristic` for exported symbols).
+- **Official Smithery Registry Manifest (`smithery.yaml`)**:
+  - Standardized configuration manifest enabling zero-install startup via `@smithery/cli` and PulseMCP.
+- **New CLI Subcommands**:
+  - `blast tests <file> [--symbol <name>]`
+  - `blast verify <file> [--stdin]`
+  - `blast coupled <file> [--depth <n>]`
+  - `blast dead [--prefix <dir>]`
+
 ## [0.1.0] - 2026-10-08
 
 ### Added

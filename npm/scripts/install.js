@@ -4,7 +4,8 @@ const os = require('os');
 const https = require('https');
 const { execSync } = require('child_process');
 
-const VERSION = 'v0.1.0';
+const pkg = require('../package.json');
+const VERSION = 'v' + pkg.version;
 const BIN_DIR = path.join(__dirname, '..', 'bin');
 const EXE = os.platform() === 'win32' ? 'blast.exe' : 'blast';
 const TARGET_PATH = path.join(BIN_DIR, EXE);

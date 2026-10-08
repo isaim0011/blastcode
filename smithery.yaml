@@ -1,0 +1,13 @@
+startCommand:
+  type: stdio
+  configSchema:
+    type: object
+    properties:
+      root:
+        type: string
+        description: "Absolute or relative path to the repository root directory to index and serve (defaults to workspace root)."
+  commandFunction: |-
+    config => ({
+      command: 'npx',
+      args: ['-y', 'blastcode', 'serve', ...(config.root ? ['--root', config.root] : [])]
+    })

@@ -30,6 +30,10 @@ pub const TOOL_NAMES: &[&str] = &[
     "get_impact_radius",
     "query_graph",
     "get_workspace_changes",
+    "get_affected_tests",
+    "verify_patch",
+    "get_co_changed_files",
+    "find_dead_code",
 ];
 
 pub struct Engine {
@@ -394,6 +398,32 @@ impl Engine {
                     arg_u64(args, "limit").unwrap_or(30) as usize,
                 )?
             }
+            "get_affected_tests" => {
+                let file = arg_str(args, "file_path").map(|p| self.norm_rel(p)).transpose()?;
+                let sym = arg_str(args, "symbol_name");
+                query::affected_tests(conn, file.as_deref(), sym)?
+            }
+            "verify_patch" => {
+                let f = arg_str(args, "file_path")
+                    .ok_or_else(|| anyhow!("missing required argument: file_path"))?;
+                let patch = arg_str(args, "patch")
+                    .ok_or_else(|| anyhow!("missing required argument: patch"))?;
+                let rel = self.norm_rel(f)?;
+                crate::verify::verify_patch(conn, &self.root, &rel, patch)?
+            }
+            "get_co_changed_files" => {
+                let f = arg_str(args, "file_path")
+                    .ok_or_else(|| anyhow!("missing required argument: file_path"))?;
+                let rel = self.norm_rel(f)?;
+                let depth = arg_u64(args, "commit_depth").unwrap_or(100).clamp(10, 1000) as usize;
+                let limit = arg_u64(args, "limit").unwrap_or(15).clamp(1, 100) as usize;
+                crate::git::co_changed_files(&self.root, &rel, depth, limit)?
+            }
+            "find_dead_code" => {
+                let prefix = arg_str(args, "path_prefix");
+                let limit = arg_u64(args, "limit").unwrap_or(50).clamp(1, 200) as usize;
+                query::find_dead_code(conn, prefix, limit)?
+            }
             other => bail!("unknown tool: {other}"),
         };
         let mut body = body;
@@ -503,6 +533,39 @@ pub fn tool_definitions() -> Value {
                 "since": { "type": "integer", "description": "Only events with seq greater than this." },
                 "file_path": { "type": "string" },
                 "limit": { "type": "integer" }
+            }}
+        },
+        {
+            "name": "get_affected_tests",
+            "description": "Finds all unit/integration test files and test functions covering a file or symbol. Traces callers and importers into test files across 10 languages and generates the exact CLI test commands (e.g. pytest, cargo test, go test, npm test) so you run only relevant tests.",
+            "inputSchema": { "type": "object", "properties": {
+                "file_path": { "type": "string", "description": "File that changed or will change." },
+                "symbol_name": { "type": "string", "description": "Specific symbol/function to trace to tests." }
+            }}
+        },
+        {
+            "name": "verify_patch",
+            "description": "Pre-flight validation of proposed code edits BEFORE saving to disk. Parses the proposed content with Tree-sitter to catch syntax errors and checks call sites against the indexed symbol signatures to flag arity/parameter count mismatches.",
+            "inputSchema": { "type": "object", "properties": {
+                "file_path": { "type": "string", "description": "File being edited." },
+                "patch": { "type": "string", "description": "Proposed new file content to validate." }
+            }, "required": ["file_path", "patch"] }
+        },
+        {
+            "name": "get_co_changed_files",
+            "description": "Mines Git commit history to discover files that frequently change together with `file_path`. Surfaces implicit dependencies (e.g. schema migrations, paired types, or documentation) that do not have direct syntactic imports.",
+            "inputSchema": { "type": "object", "properties": {
+                "file_path": { "type": "string", "description": "Target file to analyze." },
+                "commit_depth": { "type": "integer", "description": "Number of recent commits to analyze (default 100)." },
+                "limit": { "type": "integer", "description": "Maximum co-changed files to return (default 15)." }
+            }, "required": ["file_path"] }
+        },
+        {
+            "name": "find_dead_code",
+            "description": "Analyzes the code graph to identify dead, unreferenced, or orphaned symbols (functions, classes, methods) with 0 callers, 0 type usages, and 0 imports across the codebase. Confidence is tagged: probable for internal symbols, heuristic for exported ones.",
+            "inputSchema": { "type": "object", "properties": {
+                "path_prefix": { "type": "string", "description": "Optional subdirectory filter (e.g. 'src/services')." },
+                "limit": { "type": "integer", "description": "Maximum candidates to return (default 50)." }
             }}
         }
     ])

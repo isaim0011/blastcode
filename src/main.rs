@@ -109,6 +109,37 @@ enum Cmd {
     },
     /// Index statistics.
     Stats,
+    /// Find affected test files and test symbols for a file or symbol.
+    Tests {
+        file: Option<String>,
+        #[arg(long)]
+        symbol: Option<String>,
+    },
+    /// Pre-flight validation of proposed code edits before saving to disk.
+    Verify {
+        file: String,
+        /// Proposed file content string.
+        #[arg(long)]
+        patch: Option<String>,
+        /// Read proposed file content from stdin.
+        #[arg(long)]
+        stdin: bool,
+    },
+    /// Mine Git history for files frequently committed together.
+    Coupled {
+        file: String,
+        #[arg(long, default_value_t = 100)]
+        depth: u64,
+        #[arg(long, default_value_t = 15)]
+        limit: u64,
+    },
+    /// Detect dead, unreferenced, or orphaned symbols.
+    Dead {
+        #[arg(long)]
+        prefix: Option<String>,
+        #[arg(long, default_value_t = 50)]
+        limit: u64,
+    },
 }
 
 fn run_tool(engine: &mut Engine, name: &str, args: Value) -> Result<()> {
@@ -186,6 +217,40 @@ fn real_main() -> Result<()> {
         Cmd::Stats => {
             println!("{}", serde_json::to_string_pretty(&engine.stats()?)?);
             Ok(())
+        }
+        Cmd::Tests { file, symbol } => {
+            let mut args = json!({});
+            if let Some(f) = file {
+                args["file_path"] = json!(f);
+            }
+            if let Some(s) = symbol {
+                args["symbol_name"] = json!(s);
+            }
+            run_tool(&mut engine, "get_affected_tests", args)
+        }
+        Cmd::Verify { file, patch, stdin } => {
+            let content = if let Some(p) = patch {
+                p
+            } else if stdin {
+                let mut s = String::new();
+                std::io::stdin().read_to_string(&mut s)?;
+                s
+            } else {
+                std::fs::read_to_string(&file)?
+            };
+            run_tool(&mut engine, "verify_patch", json!({"file_path": file, "patch": content}))
+        }
+        Cmd::Coupled { file, depth, limit } => run_tool(
+            &mut engine,
+            "get_co_changed_files",
+            json!({"file_path": file, "commit_depth": depth, "limit": limit}),
+        ),
+        Cmd::Dead { prefix, limit } => {
+            let mut args = json!({"limit": limit});
+            if let Some(p) = prefix {
+                args["path_prefix"] = json!(p);
+            }
+            run_tool(&mut engine, "find_dead_code", args)
         }
         Cmd::Serve | Cmd::Index { .. } | Cmd::Watch { .. } => unreachable!(),
     }

@@ -8,6 +8,9 @@
 **Know what breaks before your agent edits.**
 
 [![Crates.io](https://img.shields.io/crates/v/blastcode.svg?style=flat-square&logo=rust)](https://crates.io/crates/blastcode)
+[![npm](https://img.shields.io/npm/v/blastcode.svg?style=flat-square&logo=npm)](https://www.npmjs.com/package/blastcode)
+[![PyPI](https://img.shields.io/pypi/v/blastcode.svg?style=flat-square&logo=pypi)](https://pypi.org/project/blastcode/)
+[![Open VSX](https://img.shields.io/badge/Open%20VSX-v0.2.0-purple.svg?style=flat-square&logo=visualstudiocode)](https://open-vsx.org/extension/isaim0011/blastcode-vscode)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE)
 [![CI](https://github.com/isaim0011/blastcode/actions/workflows/ci.yml/badge.svg?style=flat-square)](https://github.com/isaim0011/blastcode/actions)
 [![MCP Compatible](https://img.shields.io/badge/MCP-Compatible-brightgreen.svg?style=flat-square)](https://modelcontextprotocol.io)
@@ -51,9 +54,27 @@
   <img src="https://raw.githubusercontent.com/isaim0011/blastcode/main/assets/demo_impact.png" alt="BlastCode Impact Radius Demo" width="850"/>
 </p>
 
-## 🚀 Installation
+## 🚀 Installation & Zero-Install Running
 
-### Via Cargo (Recommended)
+### Via npm / npx (Universal Zero-Install)
+```bash
+# Run stdio MCP server anywhere immediately:
+npx blastcode serve
+
+# Or install globally:
+npm install -g blastcode
+```
+
+### Via Python / PyPI / uvx
+```bash
+# Run stdio MCP server via uv:
+uvx blastcode serve
+
+# Or install via pip:
+pip install blastcode
+```
+
+### Via Cargo (Rust)
 ```bash
 cargo install blastcode
 ```
@@ -63,18 +84,28 @@ cargo install blastcode
 brew install isaim0011/tap/blastcode
 ```
 
-### Via Pre-built Binaries
-Download the latest binary for Linux, macOS, or Windows directly from [GitHub Releases](https://github.com/isaim0011/blastcode/releases).
+### Via Smithery / PulseMCP Registry
+```bash
+npx -y @smithery/cli install blastcode --client claude
+```
+
+### Via VS Code / Cursor Extension
+Install **BlastCode** from Open VSX or the VS Code Marketplace:
+```bash
+code --install-extension isaim0011.blastcode-vscode
+# Or in Cursor:
+cursor --install-extension isaim0011.blastcode-vscode
+```
 
 ---
 
 ## 🤖 Agent Integration (MCP)
 
-BlastCode works natively with any Model Context Protocol host (Claude Code, Cursor, Windsurf, Cline).
+BlastCode works natively with any Model Context Protocol host (Claude Code, Cursor, Windsurf, Cline, Smithery).
 
 ### Claude Code
 ```bash
-claude mcp add blastcode -- blast serve --root .
+claude mcp add blastcode -- npx blastcode serve --root .
 ```
 
 ### Cursor / Windsurf / Claude Desktop (`mcp.json`)
@@ -82,8 +113,8 @@ claude mcp add blastcode -- blast serve --root .
 {
   "mcpServers": {
     "blastcode": {
-      "command": "blast",
-      "args": ["serve", "--root", "/absolute/path/to/project"]
+      "command": "npx",
+      "args": ["-y", "blastcode", "serve", "--root", "/absolute/path/to/project"]
     }
   }
 }
@@ -99,11 +130,15 @@ Add this instruction block so your AI agent uses BlastCode instead of brute-forc
 > 3. `get_symbol_source`: Retrieve the exact line range for a single function.
 > 4. `trace_symbol`: Find all callers, callees, and type usages before refactoring.
 > 5. `get_impact_radius`: Run with `new_source` BEFORE making an edit to verify what breaks.
+> 6. `verify_patch`: Pre-flight validate proposed edit syntax and argument counts before writing to disk.
+> 7. `get_affected_tests`: Find tests covering the changes and run the generated targeted test command.
+> 8. `get_co_changed_files`: Discover implicit paired dependencies from git commit history.
+> 9. `find_dead_code`: Detect unreferenced or orphaned symbols.
 ```
 
 ---
 
-## 🛠️ MCP Tools Overview
+## 🛠️ MCP Tools Overview (13 Intelligent Capabilities)
 
 | Tool | Purpose |
 | :--- | :--- |
@@ -115,7 +150,11 @@ Add this instruction block so your AI agent uses BlastCode instead of brute-forc
 | `trace_symbol` | Definition + callers / callees / type usages tagged with confidence (`exact`, `probable`, `heuristic`). |
 | `get_impact_radius` | Pre-edit: test proposed signature changes. Post-edit: inspect working tree vs `git HEAD`. |
 | `query_graph` | Structural filter by kind, name, path, callers, callees, and export status. |
-| `poll_changes` | View the change journal recorded by the caretaker background watcher. |
+| `get_workspace_changes` | View the change journal recorded by the caretaker background watcher. |
+| `get_affected_tests` | 🧪 Discovers test files/symbols covering changed files & generates targeted CLI test commands (`cargo test`, `pytest`, `npm test`, `go test`). |
+| `verify_patch` | 🛡️ Pre-flight validation of proposed code edits in memory: checks AST syntax and call-site arities before saving to disk. |
+| `get_co_changed_files` | 🔗 Mines Git commit history to discover files that frequently change together (implicit dependencies). |
+| `find_dead_code` | 🧹 Code graph analysis detecting unreferenced, dead, or orphaned functions and classes across the codebase. |
 
 ---
 
@@ -133,6 +172,10 @@ blast source my_function        # Print source lines of a specific function
 blast search "authenticate"     # Fuzzy search symbols
 blast trace verify_token        # Trace callers, callees, and type usages
 blast impact src/auth.py        # Check blast radius of uncommitted changes
+blast tests src/tools.rs        # Find affected tests and targeted test command
+blast verify src/auth.py        # Pre-flight syntax and arity validation
+blast coupled Cargo.toml        # Find frequently co-committed files via Git
+blast dead --limit 20           # Detect dead / unreferenced symbols
 blast watch                     # Live terminal stream of AST-level changes
 ```
 
