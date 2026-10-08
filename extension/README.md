@@ -1,5 +1,8 @@
 <div align="center">
 
+<img src="https://raw.githubusercontent.com/isaim0011/blastcode/main/assets/banner.png" alt="BlastCode Banner" width="100%"/>
+<br/><br/>
+
 # ⚡ BlastCode (`blast`)
 
 **Know what breaks before your agent edits.**

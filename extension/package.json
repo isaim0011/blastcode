@@ -2,8 +2,9 @@
   "name": "blastcode-vscode",
   "displayName": "BlastCode - Code Graph & MCP Companion",
   "description": "Code-graph engine, live workspace caretaker, and blast-radius analysis companion for AI agents in VS Code and Cursor",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "publisher": "isaim0011",
+  "icon": "logo.png",
   "engines": {
     "vscode": "^1.80.0"
   },
