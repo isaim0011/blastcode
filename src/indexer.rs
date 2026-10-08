@@ -391,7 +391,14 @@ pub fn index_workspace(store: &mut Store, root: &Path, opts: &Options) -> Result
     for chunk in todo.chunks(256) {
         let results: Vec<Outcome> = chunk
             .par_iter()
-            .map(|e| process(e, existing.get(&e.rel).map(|x| x.2.as_str())))
+            .map(|e| {
+                let old_h = if opts.force {
+                    None
+                } else {
+                    existing.get(&e.rel).map(|x| x.2.as_str())
+                };
+                process(e, old_h)
+            })
             .collect();
         let tx = store.conn.transaction()?;
         for r in results {
