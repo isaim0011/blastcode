@@ -1,0 +1,31 @@
+[build-system]
+requires = ["maturin>=1.5,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "blastcode"
+version = "0.1.0"
+description = "Incremental code-graph MCP server and blast-radius engine for AI coding agents."
+readme = "README.md"
+authors = [{ name = "isaim0011" }]
+license = { text = "MIT" }
+requires-python = ">=3.8"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Software Development :: Compilers",
+]
+keywords = ["mcp", "code-graph", "blast-radius", "tree-sitter", "ai-agents"]
+
+[project.urls]
+Homepage = "https://github.com/isaim0011/blastcode"
+Repository = "https://github.com/isaim0011/blastcode"
+Documentation = "https://docs.rs/blastcode"
+
+[tool.maturin]
+bindings = "bin"
+strip = true
