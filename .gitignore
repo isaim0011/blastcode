@@ -9,3 +9,5 @@ test_all_output.txt
 dist/
 *.whl
 *.tar.gz
+*.vsix
+PLAN.md
