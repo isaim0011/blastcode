@@ -1,0 +1,34 @@
+{
+  "name": "blastcode",
+  "version": "0.1.0",
+  "description": "Incremental code-graph MCP server and blast-radius engine for AI coding agents",
+  "main": "index.js",
+  "bin": {
+    "blast": "bin/blast.js",
+    "blastcode": "bin/blast.js"
+  },
+  "scripts": {
+    "postinstall": "node scripts/install.js",
+    "start": "node bin/blast.js serve"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/isaim0011/blastcode.git"
+  },
+  "keywords": [
+    "mcp",
+    "mcp-server",
+    "code-graph",
+    "tree-sitter",
+    "ai-agents",
+    "blast-radius",
+    "claude",
+    "cursor"
+  ],
+  "author": "isaim0011",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/isaim0011/blastcode/issues"
+  },
+  "homepage": "https://github.com/isaim0011/blastcode#readme"
+}

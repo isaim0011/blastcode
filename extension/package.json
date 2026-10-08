@@ -1,0 +1,40 @@
+{
+  "name": "blastcode-vscode",
+  "displayName": "BlastCode - Code Graph & MCP Companion",
+  "description": "Code-graph engine, live workspace caretaker, and blast-radius analysis companion for AI agents in VS Code and Cursor",
+  "version": "0.1.0",
+  "publisher": "isaim0011",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "AI",
+    "Linters"
+  ],
+  "keywords": [
+    "mcp",
+    "code graph",
+    "tree sitter",
+    "blast radius",
+    "cursor",
+    "claude"
+  ],
+  "main": "./extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "commands": [
+      {"command": "blastcode.index", "title": "BlastCode: Re-index Workspace"},
+      {"command": "blastcode.map", "title": "BlastCode: Show Workspace Map"},
+      {"command": "blastcode.stats", "title": "BlastCode: Show Code Graph Stats"},
+      {"command": "blastcode.startMcp", "title": "BlastCode: Start MCP Server"}
+    ]
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/isaim0011/blastcode"
+  },
+  "license": "MIT"
+}
