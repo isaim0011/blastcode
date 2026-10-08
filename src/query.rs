@@ -198,7 +198,7 @@ fn short_lang(l: &str) -> &str {
 // ------------------------------------------------------------------- search
 
 pub fn search_symbols(conn: &Connection, query: &str, kind: Option<&str>, limit: usize) -> Result<String> {
-    let q = query.trim().to_lowercase();
+    let q = query.trim().to_lowercase().replace("::", ".");
     if q.is_empty() {
         bail!("query must not be empty");
     }
@@ -315,20 +315,54 @@ pub fn query_graph(conn: &Connection, f: &GraphFilter<'_>) -> Result<String> {
 // ------------------------------------------------------------------- trace
 
 pub fn find_defs(conn: &Connection, name: &str, file: Option<&str>) -> Result<Vec<SymRow>> {
+    let clean = name.trim();
+    let norm = clean.replace("::", ".");
+    let leaf = clean
+        .rsplit("::")
+        .next()
+        .unwrap_or(clean)
+        .rsplit('.')
+        .next()
+        .unwrap_or(clean);
+
     let mut sql = format!(
         "SELECT {SYM_COLS} FROM symbols
-         WHERE (name=?1 OR qualname=?1 OR qualname LIKE ?2 ESCAPE '\\') AND kind<>'impl'"
+         WHERE (name=?1 OR qualname=?1 OR qualname=?2 OR name=?3 OR qualname LIKE ?4 ESCAPE '\\') AND kind<>'impl'"
     );
-    let mut args: Vec<String> = vec![name.to_string(), format!("%.{}", like_escape(name))];
+    let mut args: Vec<String> = vec![
+        clean.to_string(),
+        norm.clone(),
+        leaf.to_string(),
+        format!("%.{}", like_escape(leaf)),
+    ];
     if let Some(f) = file {
-        args.push(f.to_string());
-        sql.push_str(" AND file=?3");
+        args.push(format!("%{}", like_escape(f.trim_start_matches("./"))));
+        sql.push_str(&format!(" AND file LIKE ?{} ESCAPE '\\'", args.len()));
     }
     sql.push_str(" ORDER BY exported DESC, file, start_line LIMIT 50");
     let mut st = conn.prepare(&sql)?;
-    let rows: Vec<SymRow> = st
+    let mut rows: Vec<SymRow> = st
         .query_map(params_from_iter(args.iter()), sym_from_row)?
         .collect::<rusqlite::Result<_>>()?;
+
+    // If exact lookup yields no matches, do a resilient substring fallback:
+    if rows.is_empty() {
+        let mut fallback_sql = format!(
+            "SELECT {SYM_COLS} FROM symbols
+             WHERE (lower(name) LIKE ?1 ESCAPE '\\' OR lower(qualname) LIKE ?1 ESCAPE '\\') AND kind<>'impl'"
+        );
+        let mut fb_args: Vec<String> = vec![format!("%{}%", like_escape(&leaf.to_lowercase()))];
+        if let Some(f) = file {
+            fb_args.push(format!("%{}", like_escape(f.trim_start_matches("./"))));
+            fallback_sql.push_str(&format!(" AND file LIKE ?{} ESCAPE '\\'", fb_args.len()));
+        }
+        fallback_sql.push_str(" ORDER BY exported DESC, file, start_line LIMIT 20");
+        let mut fb_st = conn.prepare(&fallback_sql)?;
+        rows = fb_st
+            .query_map(params_from_iter(fb_args.iter()), sym_from_row)?
+            .collect::<rusqlite::Result<_>>()?;
+    }
+
     Ok(rows)
 }
 

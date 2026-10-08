@@ -648,3 +648,68 @@ fn test_find_dead_code() {
     );
 }
 
+#[test]
+fn test_rust_struct_field_extraction_and_lookup() {
+    let tmp = tempfile::tempdir().unwrap();
+    write(
+        tmp.path(),
+        "src/document.rs",
+        "pub struct Document {\n    pub trailer_override: usize,\n}\n",
+    );
+    let mut e = engine(tmp.path());
+
+    // 1. Search "trailer" matches "trailer_override" field
+    let v = call_json(&mut e, "search_symbols", json!({"query": "trailer"}));
+    let results = v["results"].as_array().unwrap();
+    assert!(!results.is_empty(), "{v}");
+    assert_eq!(results[0]["name"], "Document.trailer_override");
+
+    // 2. Search "Document::trailer" normalizes :: and finds it
+    let v2 = call_json(&mut e, "search_symbols", json!({"query": "Document::trailer"}));
+    let results2 = v2["results"].as_array().unwrap();
+    assert!(!results2.is_empty(), "{v2}");
+    assert_eq!(results2[0]["name"], "Document.trailer_override");
+
+    // 3. Source lookup for "trailer" falls back to trailer_override
+    let src = e
+        .call("get_symbol_source", &json!({"symbol_name": "trailer"}))
+        .unwrap();
+    assert!(src.contains("trailer_override"), "{src}");
+
+    // 4. Source lookup with Rust :: syntax
+    let src2 = e
+        .call("get_symbol_source", &json!({"symbol_name": "Document::trailer"}))
+        .unwrap();
+    assert!(src2.contains("trailer_override"), "{src2}");
+}
+
+#[test]
+fn test_grep_workspace() {
+    let tmp = tempfile::tempdir().unwrap();
+    write(
+        tmp.path(),
+        "src/document.rs",
+        "pub struct Document {\n    pub trailer_override: Option<String>,\n}\n",
+    );
+    write(
+        tmp.path(),
+        "src/main.rs",
+        "fn main() {\n    let _x = doc.trailer_override.unwrap();\n}\n",
+    );
+    let mut e = engine(tmp.path());
+
+    let v = call_json(
+        &mut e,
+        "grep_workspace",
+        json!({"pattern": "trailer_override"}),
+    );
+    assert_eq!(v["total_matches"], 2, "{v}");
+    let matches = v["matches"].as_array().unwrap();
+    assert_eq!(matches[0]["file"], "src/document.rs");
+    assert_eq!(matches[0]["line"], 2);
+    assert!(matches[0]["content"].as_str().unwrap().contains("pub trailer_override"));
+    assert_eq!(matches[1]["file"], "src/main.rs");
+    assert_eq!(matches[1]["line"], 2);
+}
+
+

@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.2.1] - 2026-10-09
+
+### Added
+- **High-Speed Workspace Grep Engine (`grep_workspace`)**:
+  - Multi-threaded regex and token search across workspace files powered by `ignore` and `regex`.
+  - Automatically respects `.gitignore`, skips binary files, and filters hidden paths.
+  - New CLI subcommand: `blast grep <pattern> [--path <glob>] [--case-sensitive] [--limit <n>] [--json]`.
+- **Struct Field, Enum Variant, Const & Static Extraction**:
+  - Extracted struct fields (e.g. `pub trailer_override: ...`), enum variants, consts, and statics into the symbol index across Rust, Go, TypeScript/JS, and Python.
+  - Field members are now fully searchable via `blast search` and extractable via `blast source`.
+- **Resilient Path Normalization & Fuzzy Fallback**:
+  - Language path syntax normalization (`::` converted to `.`) for seamless lookup of scoped items (e.g. `Document::trailer` -> `Document.trailer`).
+  - Substring fallback matching in `find_defs` so partial names (e.g. `trailer` for `trailer_override`) resolve to the exact symbol definition.
+
 ## [0.2.0] - 2026-10-09
 
 ### Added

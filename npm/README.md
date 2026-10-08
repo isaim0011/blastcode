@@ -10,7 +10,7 @@
 [![Crates.io](https://img.shields.io/crates/v/blastcode.svg?style=flat-square&logo=rust)](https://crates.io/crates/blastcode)
 [![npm](https://img.shields.io/npm/v/blastcode.svg?style=flat-square&logo=npm)](https://www.npmjs.com/package/blastcode)
 [![PyPI](https://img.shields.io/pypi/v/blastcode.svg?style=flat-square&logo=pypi)](https://pypi.org/project/blastcode/)
-[![Open VSX](https://img.shields.io/badge/Open%20VSX-v0.2.0-purple.svg?style=flat-square&logo=visualstudiocode)](https://open-vsx.org/extension/isaim0011/blastcode-vscode)
+[![Open VSX](https://img.shields.io/badge/Open%20VSX-v0.2.1-purple.svg?style=flat-square&logo=visualstudiocode)](https://open-vsx.org/extension/isaim0011/blastcode-vscode)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE)
 [![CI](https://github.com/isaim0011/blastcode/actions/workflows/ci.yml/badge.svg?style=flat-square)](https://github.com/isaim0011/blastcode/actions)
 [![MCP Compatible](https://img.shields.io/badge/MCP-Compatible-brightgreen.svg?style=flat-square)](https://modelcontextprotocol.io)
@@ -134,11 +134,12 @@ Add this instruction block so your AI agent uses BlastCode instead of brute-forc
 > 7. `get_affected_tests`: Find tests covering the changes and run the generated targeted test command.
 > 8. `get_co_changed_files`: Discover implicit paired dependencies from git commit history.
 > 9. `find_dead_code`: Detect unreferenced or orphaned symbols.
+> 10. `grep_workspace`: Fast multi-threaded regex/token search across workspace files.
 ```
 
 ---
 
-## 🛠️ MCP Tools Overview (13 Intelligent Capabilities)
+## 🛠️ MCP Tools Overview (14 Intelligent Capabilities)
 
 | Tool | Purpose |
 | :--- | :--- |
@@ -155,6 +156,7 @@ Add this instruction block so your AI agent uses BlastCode instead of brute-forc
 | `verify_patch` | 🛡️ Pre-flight validation of proposed code edits in memory: checks AST syntax and call-site arities before saving to disk. |
 | `get_co_changed_files` | 🔗 Mines Git commit history to discover files that frequently change together (implicit dependencies). |
 | `find_dead_code` | 🧹 Code graph analysis detecting unreferenced, dead, or orphaned functions and classes across the codebase. |
+| `grep_workspace` | 🔍 High-speed multi-threaded regex and token search across workspace files. Respects .gitignore, skips binaries. |
 
 ---
 
@@ -176,6 +178,7 @@ blast tests src/tools.rs        # Find affected tests and targeted test command
 blast verify src/auth.py        # Pre-flight syntax and arity validation
 blast coupled Cargo.toml        # Find frequently co-committed files via Git
 blast dead --limit 20           # Detect dead / unreferenced symbols
+blast grep "pattern"            # Ultra-fast multi-threaded workspace regex search
 blast watch                     # Live terminal stream of AST-level changes
 ```
 

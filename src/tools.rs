@@ -34,6 +34,7 @@ pub const TOOL_NAMES: &[&str] = &[
     "verify_patch",
     "get_co_changed_files",
     "find_dead_code",
+    "grep_workspace",
 ];
 
 pub struct Engine {
@@ -424,6 +425,14 @@ impl Engine {
                 let limit = arg_u64(args, "limit").unwrap_or(50).clamp(1, 200) as usize;
                 query::find_dead_code(conn, prefix, limit)?
             }
+            "grep_workspace" => {
+                let pattern = arg_str(args, "pattern")
+                    .ok_or_else(|| anyhow!("missing required argument: pattern"))?;
+                let path_filter = arg_str(args, "path_filter");
+                let case_sensitive = args.get("case_sensitive").and_then(|v| v.as_bool()).unwrap_or(false);
+                let limit = arg_u64(args, "limit").unwrap_or(50).clamp(1, 1000) as usize;
+                crate::grep::grep_workspace(&self.root, pattern, path_filter, case_sensitive, limit)?
+            }
             other => bail!("unknown tool: {other}"),
         };
         let mut body = body;
@@ -567,6 +576,16 @@ pub fn tool_definitions() -> Value {
                 "path_prefix": { "type": "string", "description": "Optional subdirectory filter (e.g. 'src/services')." },
                 "limit": { "type": "integer", "description": "Maximum candidates to return (default 50)." }
             }}
+        },
+        {
+            "name": "grep_workspace",
+            "description": "Fast multi-threaded regex/text search across all workspace files. Respects .gitignore, skips binaries, and returns matching files, lines, and content snippets.",
+            "inputSchema": { "type": "object", "properties": {
+                "pattern": { "type": "string", "description": "Regex pattern or exact text to search for." },
+                "path_filter": { "type": "string", "description": "Optional glob or path filter (e.g. '*.rs' or 'src/')." },
+                "case_sensitive": { "type": "boolean", "description": "Whether search is case-sensitive (default false)." },
+                "limit": { "type": "integer", "description": "Maximum matches to return (default 50, max 1000)." }
+            }, "required": ["pattern"] }
         }
     ])
 }

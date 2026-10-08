@@ -1,6 +1,7 @@
 //! BlastCode: a code-graph engine and MCP server for AI coding agents.
 pub mod extract;
 pub mod git;
+pub mod grep;
 pub mod impact;
 pub mod indexer;
 pub mod lang;

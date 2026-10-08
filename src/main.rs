@@ -140,6 +140,23 @@ enum Cmd {
         #[arg(long, default_value_t = 50)]
         limit: u64,
     },
+    /// Fast multi-threaded regex search across workspace files.
+    Grep {
+        /// Regex or text pattern to search for.
+        pattern: String,
+        /// Optional glob or path filter (e.g. '*.rs' or 'src/').
+        #[arg(long)]
+        path: Option<String>,
+        /// Case-sensitive search (defaults to case-insensitive).
+        #[arg(short = 's', long)]
+        case_sensitive: bool,
+        /// Maximum matches to return (default 50).
+        #[arg(long, default_value_t = 50)]
+        limit: u64,
+        /// Output raw JSON instead of human-readable matches.
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 fn run_tool(engine: &mut Engine, name: &str, args: Value) -> Result<()> {
@@ -251,6 +268,31 @@ fn real_main() -> Result<()> {
                 args["path_prefix"] = json!(p);
             }
             run_tool(&mut engine, "find_dead_code", args)
+        }
+        Cmd::Grep { pattern, path, case_sensitive, limit, json } => {
+            let res = blastcode::grep::grep_workspace(
+                &engine.root,
+                &pattern,
+                path.as_deref(),
+                case_sensitive,
+                limit as usize,
+            )?;
+            if json {
+                println!("{res}");
+            } else {
+                let v: Value = serde_json::from_str(&res)?;
+                if let Some(arr) = v["matches"].as_array() {
+                    for m in arr {
+                        println!(
+                            "{}:{}: {}",
+                            m["file"].as_str().unwrap_or(""),
+                            m["line"],
+                            m["content"].as_str().unwrap_or("")
+                        );
+                    }
+                }
+            }
+            Ok(())
         }
         Cmd::Serve | Cmd::Index { .. } | Cmd::Watch { .. } => unreachable!(),
     }

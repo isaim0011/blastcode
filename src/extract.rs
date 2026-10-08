@@ -585,6 +585,18 @@ impl<'a> Ex<'a> {
                 let doc = self.leading_doc(node);
                 Some(self.add(&name, "method", node, sig, doc, parent, exported, Some(params), false))
             }
+            "field_definition" | "public_field_definition" | "property_signature" => {
+                let p = parent?;
+                if !matches!(self.out.symbols[p].kind.as_str(), "class" | "interface") {
+                    return None;
+                }
+                let nn = node.child_by_field_name("name")?;
+                let name = self.t(nn).to_string();
+                let sig = self.t(node).trim().trim_end_matches(';').to_string();
+                let exported = !sig.starts_with("private") && !name.starts_with('#');
+                let doc = self.leading_doc(node);
+                Some(self.add(&name, "field", node, sig, doc, parent, exported, None, false))
+            }
             "variable_declarator" => {
                 self.ts_require(node);
                 if parent.is_some() {
@@ -889,6 +901,35 @@ impl<'a> Ex<'a> {
             "enum_item" => self.rs_type(node, parent, "enum"),
             "trait_item" => self.rs_type(node, parent, "trait"),
             "type_item" => self.rs_type(node, parent, "type"),
+            "field_declaration" => {
+                let name = self.t(node.child_by_field_name("name")?).to_string();
+                let sig = self.t(node).trim().trim_end_matches(',').to_string();
+                let exported = Self::rs_pub(node);
+                let doc = self.leading_doc(node);
+                Some(self.add(&name, "field", node, sig, doc, parent, exported, None, false))
+            }
+            "enum_variant" => {
+                let name = self.t(node.child_by_field_name("name")?).to_string();
+                let sig = self.t(node).trim().trim_end_matches(',').to_string();
+                let doc = self.leading_doc(node);
+                Some(self.add(&name, "variant", node, sig, doc, parent, true, None, false))
+            }
+            "const_item" => {
+                let name = self.t(node.child_by_field_name("name")?).to_string();
+                let value = node.child_by_field_name("value");
+                let sig = self.sig(node, value);
+                let exported = Self::rs_pub(node);
+                let doc = self.leading_doc(node);
+                Some(self.add(&name, "const", node, sig, doc, parent, exported, None, false))
+            }
+            "static_item" => {
+                let name = self.t(node.child_by_field_name("name")?).to_string();
+                let value = node.child_by_field_name("value");
+                let sig = self.sig(node, value);
+                let exported = Self::rs_pub(node);
+                let doc = self.leading_doc(node);
+                Some(self.add(&name, "static", node, sig, doc, parent, exported, None, false))
+            }
             "impl_item" => {
                 let ty = self.t(node.child_by_field_name("type")?).to_string();
                 let name = ty.split('<').next().unwrap_or("").trim().trim_start_matches('&').to_string();
@@ -1093,6 +1134,28 @@ impl<'a> Ex<'a> {
                 let doc = self.leading_doc(node.parent().unwrap_or(node));
                 let exported = name.chars().next().map_or(false, |c| c.is_uppercase());
                 Some(self.add(&name, kind, node, sig, doc, parent, exported, None, false))
+            }
+            "field_declaration" => {
+                let mut c = node.walk();
+                for n in node.children_by_field_name("name", &mut c) {
+                    let name = self.t(n).to_string();
+                    let sig = self.t(node).trim().to_string();
+                    let exported = name.chars().next().map_or(false, |ch| ch.is_uppercase());
+                    let doc = self.leading_doc(node);
+                    self.add(&name, "field", node, sig, doc, parent, exported, None, false);
+                }
+                None
+            }
+            "const_spec" => {
+                let mut c = node.walk();
+                for n in node.children_by_field_name("name", &mut c) {
+                    let name = self.t(n).to_string();
+                    let sig = self.t(node).trim().to_string();
+                    let exported = name.chars().next().map_or(false, |ch| ch.is_uppercase());
+                    let doc = self.leading_doc(node);
+                    self.add(&name, "const", node, sig, doc, parent, exported, None, false);
+                }
+                None
             }
             "type_identifier" => {
                 let skip = Self::is_decl_name(node)

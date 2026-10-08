@@ -41,12 +41,13 @@ fn mcp_handshake_list_and_call() {
     send(json!({"jsonrpc":"2.0","id":2,"method":"tools/list"}));
     let r = recv();
     let names: Vec<&str> = r["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
-    assert_eq!(names.len(), 13);
+    assert_eq!(names.len(), 14);
     assert!(names.contains(&"get_impact_radius"));
     assert!(names.contains(&"get_affected_tests"));
     assert!(names.contains(&"verify_patch"));
     assert!(names.contains(&"get_co_changed_files"));
     assert!(names.contains(&"find_dead_code"));
+    assert!(names.contains(&"grep_workspace"));
 
     // Background indexing may still be running; poll until the symbol is visible.
     let mut found = false;

@@ -113,6 +113,7 @@ dependencies = [
  "clap",
  "ignore",
  "rayon",
+ "regex",
  "rusqlite",
  "serde",
  "serde_json",
