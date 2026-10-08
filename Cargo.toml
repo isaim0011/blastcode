@@ -1,0 +1,63 @@
+[package]
+name = "blastcode"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+description = "Incremental code-graph MCP server and blast-radius engine for AI coding agents: file skeletons, call graphs, and impact analysis."
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/isaim0011/blastcode"
+homepage = "https://github.com/isaim0011/blastcode"
+documentation = "https://docs.rs/blastcode"
+keywords = ["mcp", "code-graph", "tree-sitter", "ai-agents", "blast-radius"]
+categories = ["development-tools", "command-line-utilities"]
+
+[lib]
+name = "blastcode"
+path = "src/lib.rs"
+
+[[bin]]
+name = "blast"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+blake3 = "1"
+clap = { version = "4", features = ["derive"] }
+ignore = "0.4"
+rayon = "1"
+rusqlite = { version = "0.32", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tree-sitter = "0.24"
+tree-sitter-go = "0.23"
+tree-sitter-javascript = "0.23"
+tree-sitter-python = "0.23"
+tree-sitter-rust = "0.23"
+tree-sitter-typescript = "0.23"
+tree-sitter-java = { version = "0.23", optional = true }
+# Pinned: 0.23.2+ ship ABI 15, which tree-sitter 0.24 cannot load (it accepts ABI 13-14).
+tree-sitter-c-sharp = { version = "=0.23.1", optional = true }
+tree-sitter-c = { version = "0.23", optional = true }
+tree-sitter-cpp = { version = "0.23", optional = true }
+tree-sitter-php = { version = "0.23", optional = true }
+tree-sitter-ruby = { version = "0.23", optional = true }
+
+[features]
+# Each extra grammar is optional so a single grammar problem never blocks a build:
+#   cargo build --no-default-features --features lang-java
+default = ["lang-java", "lang-csharp", "lang-c", "lang-cpp", "lang-php", "lang-ruby"]
+lang-java = ["dep:tree-sitter-java"]
+lang-csharp = ["dep:tree-sitter-c-sharp"]
+lang-c = ["dep:tree-sitter-c"]
+lang-cpp = ["dep:tree-sitter-cpp"]
+lang-php = ["dep:tree-sitter-php"]
+lang-ruby = ["dep:tree-sitter-ruby"]
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
