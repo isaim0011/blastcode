@@ -30,44 +30,23 @@
 ---
 
 ### 🖥️ Live Preview 1: Surgical Skeleton (Instead of reading whole files)
-```
-$ blast skeleton src/tools.rs
-# src/tools.rs · rust · 509 lines · 21 symbols
-   35| pub struct Engine
-   79| pub fn format_event(e: &EventRow) -> String
-  130| impl Engine
-  131|   pub fn open(root: &Path, db: Option<PathBuf>) -> Result<Engine>
-  166|   pub fn index_now(&mut self, force: bool) -> Result<IndexStats>
-  177|   pub fn spawn_watcher(&mut self)
-  265|   pub fn take_digest(&mut self) -> Result<Option<String>>
-  297|   pub fn call_with_digest(&mut self, name: &str, args: &Value) -> Result<(Option<String>, String)>
-```
+<p align="center">
+  <img src="https://raw.githubusercontent.com/isaim0011/blastcode/main/assets/demo_skeleton.png" alt="BlastCode Skeleton Demo" width="850"/>
+</p>
 
 ---
 
 ### 🖥️ Live Preview 2: The Caretaker Change Digest (Zero-Token Sync)
-When you edit a file in your editor or your agent makes a change, BlastCode prepends an automatic digest to the next tool response. The agent never has to run `git diff` or re-read:
-```
-[blast] workspace changes since your last call:
-~ auth/jwt.py — signature changed: def verify_token(token) → def verify_token(token, audience) | added: brand_new
-+ extra.py added · extra_fn
-- deprecated.py deleted · had old_auth
-Run get_impact_radius on changed files to see affected callers.
-```
+<p align="center">
+  <img src="https://raw.githubusercontent.com/isaim0011/blastcode/main/assets/demo_caretaker.png" alt="BlastCode Caretaker Demo" width="850"/>
+</p>
 
 ---
 
 ### 🖥️ Live Preview 3: Pre-Edit Blast Radius (Know what breaks before editing)
-```
-$ cat proposed.py | blast impact auth/jwt.py --stdin
-{
-  "summary": { "breaking": 2, "compatible": 1 },
-  "breaking_callers": [
-    { "caller": "login_handler", "file": "src/api/routes.py:42", "reason": "missing required parameter 'audience'" },
-    { "caller": "verify_session", "file": "src/middleware/auth.py:88", "reason": "missing required parameter 'audience'" }
-  ]
-}
-```
+<p align="center">
+  <img src="https://raw.githubusercontent.com/isaim0011/blastcode/main/assets/demo_impact.png" alt="BlastCode Impact Radius Demo" width="850"/>
+</p>
 
 ## 🚀 Installation
 
