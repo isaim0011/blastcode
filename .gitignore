@@ -11,3 +11,4 @@ dist/
 *.tar.gz
 *.vsix
 PLAN.md
+scratch/
