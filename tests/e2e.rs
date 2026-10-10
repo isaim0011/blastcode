@@ -712,4 +712,176 @@ fn test_grep_workspace() {
     assert_eq!(matches[1]["line"], 2);
 }
 
+#[test]
+fn test_svelte_extraction_skeleton_and_trace() {
+    let tmp = tempfile::tempdir().unwrap();
+    write(
+        tmp.path(),
+        "src/Header.svelte",
+        "<script lang=\"ts\">\n  export let title: string = 'Welcome';\n</script>\n<header>{title}</header>\n",
+    );
+    write(
+        tmp.path(),
+        "src/App.svelte",
+        "<script lang=\"ts\">\n  import Header from './Header.svelte';\n  export let name: string = 'World';\n  let count = $state(0);\n  function handleClick() {\n    count += 1;\n  }\n</script>\n\n<Header {name} />\n<button on:click={handleClick}>Clicks: {count}</button>\n\n<style>\n  .highlight {\n    color: red;\n  }\n</style>\n",
+    );
+    let mut e = engine(tmp.path());
+
+    let sk = e
+        .call("get_file_skeleton", &json!({"file_path": "src/App.svelte"}))
+        .unwrap();
+    assert!(sk.contains("name"), "skeleton should contain prop name: {sk}");
+    assert!(sk.contains("count"), "skeleton should contain count: {sk}");
+    assert!(sk.contains("handleClick"), "skeleton should contain handleClick: {sk}");
+    assert!(sk.contains(".highlight"), "skeleton should contain .highlight: {sk}");
+
+    let src = e
+        .call("get_symbol_source", &json!({"symbol_name": "handleClick", "file_path": "src/App.svelte"}))
+        .unwrap();
+    assert!(src.contains("function handleClick()"), "{src}");
+    assert!(src.contains("count += 1"), "{src}");
+
+    // Trace handleClick -> called at on:click line
+    let tr = call_json(&mut e, "trace_symbol", json!({"symbol_name": "handleClick", "file_path": "src/App.svelte"}));
+    let callers = tr["matches"][0]["callers"].as_array().unwrap();
+    assert!(!callers.is_empty(), "template event handler should register call: {tr}");
+
+    // Trace Header -> called/referenced in App.svelte template
+    let tr_hdr = call_json(&mut e, "trace_symbol", json!({"symbol_name": "Header"}));
+    let hdr_callers = tr_hdr["matches"][0]["callers"].as_array().unwrap();
+    assert!(
+        hdr_callers.iter().any(|c| c["file"].as_str() == Some("src/App.svelte")),
+        "Header should be referenced in App.svelte: {tr_hdr}"
+    );
+}
+
+#[test]
+fn test_vue_extraction_and_components() {
+    let tmp = tempfile::tempdir().unwrap();
+    write(
+        tmp.path(),
+        "src/Child.vue",
+        "<script setup lang=\"ts\">\n  defineProps<{ msg: string }>();\n</script>\n<template><span>{{ msg }}</span></template>\n",
+    );
+    write(
+        tmp.path(),
+        "src/Parent.vue",
+        "<script setup lang=\"ts\">\n  import Child from './Child.vue';\n  import { ref } from 'vue';\n  const count = ref(0);\n  function increment() {\n    count.value++;\n  }\n</script>\n\n<template>\n  <Child :msg=\"'Hello'\" />\n  <button @click=\"increment\">+1</button>\n</template>\n\n<style scoped>\n  .container {\n    display: flex;\n  }\n</style>\n",
+    );
+    let mut e = engine(tmp.path());
+
+    let sk = e
+        .call("get_file_skeleton", &json!({"file_path": "src/Parent.vue"}))
+        .unwrap();
+    assert!(sk.contains("count"), "{sk}");
+    assert!(sk.contains("increment"), "{sk}");
+    assert!(sk.contains(".container"), "{sk}");
+
+    let src = e
+        .call("get_symbol_source", &json!({"symbol_name": "increment", "file_path": "src/Parent.vue"}))
+        .unwrap();
+    assert!(src.contains("count.value++"), "{src}");
+
+    // Trace Child component
+    let tr = call_json(&mut e, "trace_symbol", json!({"symbol_name": "Child"}));
+    let callers = tr["matches"][0]["callers"].as_array().unwrap();
+    assert!(
+        callers.iter().any(|c| c["file"].as_str() == Some("src/Parent.vue")),
+        "Child component should be called in Parent.vue: {tr}"
+    );
+}
+
+#[test]
+fn test_astro_frontmatter_and_template() {
+    let tmp = tempfile::tempdir().unwrap();
+    write(
+        tmp.path(),
+        "src/Card.astro",
+        "---\ninterface Props {\n  title: string;\n}\nconst { title } = Astro.props;\nfunction formatTitle(t: string) {\n  return t.toUpperCase();\n}\n---\n<div class=\"card\"><h1>{formatTitle(title)}</h1></div>\n",
+    );
+    let mut e = engine(tmp.path());
+
+    let sk = e
+        .call("get_file_skeleton", &json!({"file_path": "src/Card.astro"}))
+        .unwrap();
+    assert!(sk.contains("Props"), "{sk}");
+    assert!(sk.contains("formatTitle"), "{sk}");
+
+    let src = e
+        .call("get_symbol_source", &json!({"symbol_name": "formatTitle", "file_path": "src/Card.astro"}))
+        .unwrap();
+    assert!(src.contains("t.toUpperCase()"), "{src}");
+}
+
+#[test]
+fn test_css_extraction_and_variables() {
+    let tmp = tempfile::tempdir().unwrap();
+    write(
+        tmp.path(),
+        "src/theme.css",
+        ":root {\n  --primary-color: #3b82f6;\n  --spacing-md: 16px;\n}\n\n.btn {\n  padding: var(--spacing-md);\n}\n\n.btn-primary {\n  background: var(--primary-color);\n}\n\n#app-root {\n  margin: 0 auto;\n}\n\n@keyframes slideIn {\n  from { opacity: 0; }\n  to { opacity: 1; }\n}\n",
+    );
+    let mut e = engine(tmp.path());
+
+    let sk = e
+        .call("get_file_skeleton", &json!({"file_path": "src/theme.css"}))
+        .unwrap();
+    assert!(sk.contains("--primary-color"), "{sk}");
+    assert!(sk.contains(".btn"), "{sk}");
+    assert!(sk.contains(".btn-primary"), "{sk}");
+    assert!(sk.contains("#app-root"), "{sk}");
+    assert!(sk.contains("@keyframes slideIn"), "{sk}");
+
+    let search = call_json(&mut e, "search_symbols", json!({"query": "btn-primary"}));
+    assert!(search["total_matches"].as_u64().unwrap() >= 1, "{search}");
+}
+
+#[test]
+fn test_sfc_cross_file_impact() {
+    let tmp = tempfile::tempdir().unwrap();
+    write(
+        tmp.path(),
+        "src/Header.svelte",
+        "<script lang=\"ts\">\n  export let title: string = 'Welcome';\n</script>\n<h1>{title}</h1>\n",
+    );
+    write(
+        tmp.path(),
+        "src/App.svelte",
+        "<script lang=\"ts\">\n  import Header from './Header.svelte';\n</script>\n<Header title=\"Hello\" />\n",
+    );
+    let mut e = engine(tmp.path());
+
+    // Context of Header.svelte should list App.svelte as dependent
+    let ctx = call_json(&mut e, "get_file_context", json!({"file_path": "src/Header.svelte"}));
+    let deps = ctx["dependents"]["files"].as_array().unwrap();
+    assert!(
+        deps.iter().any(|d| d["file"].as_str() == Some("src/App.svelte")),
+        "Header.svelte should have App.svelte as dependent: {ctx}"
+    );
+}
+
+#[test]
+fn test_html_scripts_styles_and_ids() {
+    let tmp = tempfile::tempdir().unwrap();
+    write(
+        tmp.path(),
+        "index.html",
+        "<!DOCTYPE html>\n<html>\n<head>\n  <style>\n    .hero-title {\n      font-size: 2rem;\n    }\n  </style>\n</head>\n<body>\n  <div id=\"main-content\">\n    <h1 class=\"hero-title\">Hello</h1>\n  </div>\n  <script>\n    function startApp() {\n      console.log('App started');\n    }\n    startApp();\n  </script>\n</body>\n</html>\n",
+    );
+    let mut e = engine(tmp.path());
+
+    let sk = e
+        .call("get_file_skeleton", &json!({"file_path": "index.html"}))
+        .unwrap();
+    assert!(sk.contains("startApp"), "{sk}");
+    assert!(sk.contains(".hero-title"), "{sk}");
+    assert!(sk.contains("#main-content"), "{sk}");
+
+    let src = e
+        .call("get_symbol_source", &json!({"symbol_name": "startApp", "file_path": "index.html"}))
+        .unwrap();
+    assert!(src.contains("console.log('App started')"), "{src}");
+}
+
+
 

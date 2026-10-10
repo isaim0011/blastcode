@@ -10,7 +10,7 @@
 [![Crates.io](https://img.shields.io/crates/v/blastcode.svg?style=flat-square&logo=rust)](https://crates.io/crates/blastcode)
 [![npm](https://img.shields.io/npm/v/blastcode.svg?style=flat-square&logo=npm)](https://www.npmjs.com/package/blastcode)
 [![PyPI](https://img.shields.io/pypi/v/blastcode.svg?style=flat-square&logo=pypi)](https://pypi.org/project/blastcode/)
-[![Open VSX](https://img.shields.io/badge/Open%20VSX-v0.2.1-purple.svg?style=flat-square&logo=visualstudiocode)](https://open-vsx.org/extension/isaim0011/blastcode-vscode)
+[![Open VSX](https://img.shields.io/badge/Open%20VSX-v0.3.0-purple.svg?style=flat-square&logo=visualstudiocode)](https://open-vsx.org/extension/isaim0011/blastcode-vscode)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE)
 [![CI](https://github.com/isaim0011/blastcode/actions/workflows/ci.yml/badge.svg?style=flat-square)](https://github.com/isaim0011/blastcode/actions)
 [![MCP Compatible](https://img.shields.io/badge/MCP-Compatible-brightgreen.svg?style=flat-square)](https://modelcontextprotocol.io)
@@ -184,14 +184,13 @@ blast watch                     # Live terminal stream of AST-level changes
 
 ---
 
-## 🌐 Supported Languages (10 Languages)
+## 🌐 Supported Languages (16 Languages & Web Formats)
 
-| Tier | Languages | Grammar Feature Flag |
+| Tier | Languages & Formats | Details |
 | :--- | :--- | :--- |
-| **Core** | **Python, TypeScript, JavaScript (TSX/JSX), Rust, Go** | Included by default |
-| **Extended** | **Java, C#, C, C++, PHP, Ruby** | Cargo features (`lang-java`, `lang-csharp`, `lang-c`, `lang-cpp`, `lang-php`, `lang-ruby`) |
-
-*Swift and Kotlin support are scheduled next.*
+| **Core Systems** | **Python, TypeScript, JavaScript (TSX/JSX), Rust, Go** | Included by default, zero config |
+| **Frontend & Web** | **Svelte (`.svelte`), Vue (`.vue`), Astro (`.astro`), HTML (`.html`), CSS/SCSS (`.css`, `.scss`, `.less`)** | Svelte 5 runes (`$props`, `$state`), Vue SFC (`defineProps`, `ref`), Astro frontmatter, template components & CSS class selectors |
+| **Polyglot & Enterprise** | **Java, C#, C, C++, PHP, Ruby** | Cargo features (`lang-java`, `lang-csharp`, `lang-c`, `lang-cpp`, `lang-php`, `lang-ruby`) |
 
 ---
 

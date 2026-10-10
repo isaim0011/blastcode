@@ -29,9 +29,11 @@ pub const SYM_COLS_S: &str =
 const MAX_CANDIDATES: usize = 5000;
 const MAX_HEURISTIC: usize = 20;
 const MAX_REEXPORT_DEPTH: u8 = 4;
-const U_KINDS: [&str; 3] = ["function", "class", "struct"];
+const U_KINDS: [&str; 4] = ["function", "class", "struct", "component"];
 const Q_KINDS: [&str; 2] = ["function", "method"];
-const T_KINDS: [&str; 6] = ["class", "struct", "interface", "enum", "trait", "type"];
+const T_KINDS: [&str; 7] = [
+    "class", "struct", "interface", "enum", "trait", "type", "component",
+];
 
 #[derive(Debug, Clone)]
 pub struct SymRow {
@@ -141,7 +143,9 @@ pub fn join_norm(base: &str, rel: &str) -> Option<String> {
     Some(parts.join("/"))
 }
 
-const TS_EXTS: [&str; 8] = ["ts", "tsx", "js", "jsx", "mjs", "cjs", "mts", "cts"];
+const TS_EXTS: [&str; 11] = [
+    "ts", "tsx", "js", "jsx", "mjs", "cjs", "mts", "cts", "svelte", "vue", "astro",
+];
 const C_SOURCE_EXTS: [&str; 4] = [".c", ".cc", ".cpp", ".cxx"];
 
 pub struct FileIndex {
@@ -508,7 +512,9 @@ impl<'a> Resolver<'a> {
                 }
                 v
             }
-            Some(Family::Ts) => self.ix.ts_module(from, &imp.module, &self.aliases),
+            Some(Family::Ts | Family::Sfc | Family::Html) => {
+                self.ix.ts_module(from, &imp.module, &self.aliases)
+            }
             Some(Family::Rust) => {
                 let mut v = self.ix.rs_module(&imp.module);
                 if v.is_empty() && imp.original.is_some() {
@@ -538,6 +544,17 @@ impl<'a> Resolver<'a> {
                 }
             }
             Some(Family::Ruby) => self.ix.ruby_module(from, &imp.module),
+            Some(Family::Css) => {
+                if let Some(rel) = join_norm(from, &imp.module) {
+                    if self.ix.files.contains(&rel) {
+                        vec![rel]
+                    } else {
+                        vec![]
+                    }
+                } else {
+                    vec![]
+                }
+            }
             None => vec![],
         };
         v.sort();
@@ -840,7 +857,7 @@ impl<'a> Resolver<'a> {
         // Import statements (and re-exports) that name the symbol.
         let imports: Vec<(String, ImportRow)> = {
             let mut st = self.conn.prepare_cached(
-                "SELECT file,local,module,original,wildcard,line FROM imports WHERE original=?1 AND wildcard=0 LIMIT 2000",
+                "SELECT file,local,module,original,wildcard,line FROM imports WHERE (original=?1 OR (original='default' AND local=?1)) AND wildcard=0 LIMIT 2000",
             )?;
             let rows = st.query_map([&target.name], |r| {
                 Ok((

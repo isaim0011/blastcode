@@ -5,6 +5,7 @@
 //! under it) and `None` otherwise.
 
 use anyhow::{anyhow, Result};
+use regex::Regex;
 use tree_sitter::{Node, Parser};
 
 use crate::lang::{Family, Lang};
@@ -24,36 +25,38 @@ const JS_GLOBALS: &[&str] = &[
 ];
 
 pub fn parse(lang: Lang, src: &[u8]) -> Result<Parsed> {
-    let mut parser = Parser::new();
-    parser
-        .set_language(&lang.ts_language())
-        .map_err(|e| anyhow!("loading grammar: {e}"))?;
-    let tree = parser
-        .parse(src, None)
-        .ok_or_else(|| anyhow!("parser returned no tree"))?;
-    let mut ex = Ex {
-        src,
-        lang,
-        out: Parsed {
-            symbols: Vec::new(),
-            refs: Vec::new(),
-            imports: Vec::new(),
-            lines: 0,
-        },
-    };
-    ex.walk(tree.root_node(), None, 0);
-    let mut out = ex.out;
-    out.lines = if src.is_empty() {
-        0
-    } else {
-        let nl = src.iter().filter(|b| **b == b'\n').count() as u32;
-        if src.last() == Some(&b'\n') {
-            nl
-        } else {
-            nl + 1
+    parse_with_path(lang, src, None)
+}
+
+pub fn parse_with_path(lang: Lang, src: &[u8], path: Option<&str>) -> Result<Parsed> {
+    match lang.family() {
+        Family::Sfc => parse_sfc(lang, src, path),
+        Family::Html => parse_html(lang, src),
+        Family::Css => parse_css(lang, src),
+        _ => {
+            let mut parser = Parser::new();
+            parser
+                .set_language(&lang.ts_language())
+                .map_err(|e| anyhow!("loading grammar: {e}"))?;
+            let tree = parser
+                .parse(src, None)
+                .ok_or_else(|| anyhow!("parser returned no tree"))?;
+            let mut ex = Ex {
+                src,
+                lang,
+                out: Parsed {
+                    symbols: Vec::new(),
+                    refs: Vec::new(),
+                    imports: Vec::new(),
+                    lines: 0,
+                },
+            };
+            ex.walk(tree.root_node(), None, 0);
+            let mut out = ex.out;
+            out.lines = count_lines(src);
+            Ok(out)
         }
-    };
-    Ok(out)
+    }
 }
 
 struct Ex<'a> {
@@ -256,7 +259,7 @@ impl<'a> Ex<'a> {
         }
         let declared = match self.lang.family() {
             Family::Python => self.py(node, parent),
-            Family::Ts => self.ts(node, parent),
+            Family::Ts | Family::Sfc | Family::Html => self.ts(node, parent),
             Family::Rust => self.rs(node, parent),
             Family::Go => self.go(node, parent),
             Family::Java => self.java(node, parent),
@@ -264,6 +267,7 @@ impl<'a> Ex<'a> {
             Family::C => self.c_like(node, parent),
             Family::Php => self.php(node, parent),
             Family::Ruby => self.ruby(node, parent),
+            Family::Css => None,
         };
         let np = declared.or(parent);
         let mut c = node.walk();
@@ -603,39 +607,73 @@ impl<'a> Ex<'a> {
                     return None;
                 }
                 let name_n = node.child_by_field_name("name")?;
-                if name_n.kind() != "identifier" {
-                    return None;
-                }
-                let value = node.child_by_field_name("value")?;
-                if !matches!(
-                    value.kind(),
-                    "arrow_function" | "function_expression" | "function" | "generator_function"
-                ) {
-                    return None;
-                }
-                let name = self.t(name_n).to_string();
-                let params = if let Some(p) = value.child_by_field_name("parameters") {
-                    self.ts_params(Some(p))
-                } else if let Some(p) = value.child_by_field_name("parameter") {
-                    vec![Param {
-                        name: self.t(p).to_string(),
-                        optional: false,
-                        variadic: false,
-                        kw_only: false,
-                    }]
-                } else {
-                    Vec::new()
-                };
-                let body = value.child_by_field_name("body");
                 let decl = node.parent().unwrap_or(node);
                 let exported = decl.parent().map_or(false, |p| p.kind() == "export_statement");
-                let mut sig = self.sig(decl, body);
-                if exported {
-                    sig = format!("export {sig}");
+
+                if name_n.kind() == "identifier" {
+                    let name = self.t(name_n).to_string();
+                    let value = node.child_by_field_name("value");
+                    let is_func = value.map_or(false, |v| {
+                        matches!(
+                            v.kind(),
+                            "arrow_function" | "function_expression" | "function" | "generator_function"
+                        )
+                    });
+
+                    if is_func {
+                        let value = value.unwrap();
+                        let params = if let Some(p) = value.child_by_field_name("parameters") {
+                            self.ts_params(Some(p))
+                        } else if let Some(p) = value.child_by_field_name("parameter") {
+                            vec![Param {
+                                name: self.t(p).to_string(),
+                                optional: false,
+                                variadic: false,
+                                kw_only: false,
+                            }]
+                        } else {
+                            Vec::new()
+                        };
+                        let body = value.child_by_field_name("body");
+                        let mut sig = self.sig(decl, body);
+                        if exported {
+                            sig = format!("export {sig}");
+                        }
+                        let top = if exported { decl.parent().unwrap_or(decl) } else { decl };
+                        let doc = self.leading_doc(top);
+                        return Some(self.add(&name, "function", decl, sig, doc, parent, exported, Some(params), false));
+                    } else if exported || self.lang.family() == Family::Sfc {
+                        let kind = if exported && self.lang == Lang::Svelte {
+                            "prop"
+                        } else {
+                            "variable"
+                        };
+                        let mut sig = collapse(self.t(decl).trim().trim_end_matches(';'));
+                        if exported && !sig.starts_with("export") {
+                            sig = format!("export {sig}");
+                        }
+                        let top = if exported { decl.parent().unwrap_or(decl) } else { decl };
+                        let doc = self.leading_doc(top);
+                        return Some(self.add(&name, kind, decl, sig, doc, parent, exported, None, false));
+                    }
+                } else if name_n.kind() == "object_pattern" && (exported || self.lang.family() == Family::Sfc) {
+                    let mut c = name_n.walk();
+                    for ch in name_n.named_children(&mut c) {
+                        let id_node = match ch.kind() {
+                            "shorthand_property_identifier_pattern" => Some(ch),
+                            "pair_pattern" => ch.child_by_field_name("value"),
+                            _ => None,
+                        };
+                        if let Some(id) = id_node {
+                            if id.kind() == "identifier" {
+                                let name = self.t(id).to_string();
+                                let sig = format!("prop {name}");
+                                self.add(&name, "prop", decl, sig, None, parent, exported, None, false);
+                            }
+                        }
+                    }
                 }
-                let top = if exported { decl.parent().unwrap_or(decl) } else { decl };
-                let doc = self.leading_doc(top);
-                Some(self.add(&name, "function", decl, sig, doc, parent, exported, Some(params), false))
+                None
             }
             "call_expression" => {
                 self.ts_call(node, parent);
@@ -2166,4 +2204,537 @@ impl<'a> Ex<'a> {
         let args = self.ruby_args(args_n);
         self.add_ref(&mname, qual, "call", node, args, enclosing);
     }
+}
+
+// ---------------------------------------------------------------- SFC, HTML, CSS
+
+fn count_lines(src: &[u8]) -> u32 {
+    if src.is_empty() {
+        0
+    } else {
+        let nl = src.iter().filter(|b| **b == b'\n').count() as u32;
+        if src.last() == Some(&b'\n') {
+            nl
+        } else {
+            nl + 1
+        }
+    }
+}
+
+fn line_at(src: &[u8], offset: usize) -> u32 {
+    let clamped = offset.min(src.len());
+    let nl = src[..clamped].iter().filter(|b| **b == b'\n').count() as u32;
+    nl + 1
+}
+
+fn find_tag_blocks(src: &[u8], tag_name: &str) -> Vec<(usize, usize)> {
+    let text = match std::str::from_utf8(src) {
+        Ok(t) => t,
+        Err(_) => return Vec::new(),
+    };
+    let open_pat = format!("<{}", tag_name);
+    let close_pat = format!("</{}>", tag_name);
+    let mut blocks = Vec::new();
+    let mut search_from = 0;
+
+    while let Some(start_idx) = text[search_from..].find(&open_pat) {
+        let abs_start = search_from + start_idx;
+        let after_tag = abs_start + open_pat.len();
+        if after_tag < text.len() {
+            let next_c = text.as_bytes()[after_tag];
+            if next_c != b'>' && !next_c.is_ascii_whitespace() {
+                search_from = after_tag;
+                continue;
+            }
+        }
+        let Some(tag_end) = text[abs_start..].find('>') else {
+            break;
+        };
+        let content_start = abs_start + tag_end + 1;
+        let Some(close_idx) = text[content_start..].find(&close_pat) else {
+            blocks.push((content_start, src.len()));
+            break;
+        };
+        let content_end = content_start + close_idx;
+        blocks.push((content_start, content_end));
+        search_from = content_end + close_pat.len();
+    }
+    blocks
+}
+
+fn find_astro_frontmatter(src: &[u8]) -> Option<(usize, usize)> {
+    let text = std::str::from_utf8(src).ok()?;
+    let trimmed = text.trim_start();
+    if !trimmed.starts_with("---") {
+        return None;
+    }
+    let lead_offset = text.len() - trimmed.len();
+    let after_first = lead_offset + 3;
+    let newline_idx = text[after_first..].find('\n')?;
+    let content_start = after_first + newline_idx + 1;
+    let rest = &text[content_start..];
+    let mut curr_offset = content_start;
+    for line in rest.split('\n') {
+        if line.trim() == "---" {
+            return Some((content_start, curr_offset));
+        }
+        curr_offset += line.len() + 1;
+    }
+    None
+}
+
+fn parse_sfc(lang: Lang, src: &[u8], path: Option<&str>) -> Result<Parsed> {
+    let mut out = Parsed {
+        symbols: Vec::new(),
+        refs: Vec::new(),
+        imports: Vec::new(),
+        lines: count_lines(src),
+    };
+
+    if let Some(p) = path {
+        let p_norm = p.replace('\\', "/");
+        let fname = p_norm.rsplit_once('/').map(|x| x.1).unwrap_or(&p_norm);
+        let stem = fname.rsplit_once('.').map(|x| x.0).unwrap_or(fname);
+        if !stem.is_empty() && stem.chars().next().map_or(false, |c| c.is_alphabetic()) {
+            out.symbols.push(SymbolRec {
+                name: stem.to_string(),
+                qualname: stem.to_string(),
+                kind: "component".to_string(),
+                signature: format!("component {stem}"),
+                doc: None,
+                start_line: 1,
+                end_line: out.lines.max(1),
+                depth: 0,
+                parent: None,
+                exported: true,
+                params: None,
+                has_self: false,
+            });
+        }
+    }
+
+    // 1. Gather all script blocks
+    let mut script_blocks = find_tag_blocks(src, "script");
+    if lang == Lang::Astro {
+        if let Some(fm) = find_astro_frontmatter(src) {
+            script_blocks.insert(0, fm);
+        }
+    }
+
+    // 2. Gather all style blocks
+    let style_blocks = find_tag_blocks(src, "style");
+
+    // 3. Parse scripts if present
+    if !script_blocks.is_empty() {
+        let mut virtual_src = vec![b' '; src.len()];
+        for (i, &b) in src.iter().enumerate() {
+            if b == b'\n' {
+                virtual_src[i] = b'\n';
+            }
+        }
+        for (start, end) in &script_blocks {
+            if *start < src.len() && *end <= src.len() && *start < *end {
+                virtual_src[*start..*end].copy_from_slice(&src[*start..*end]);
+            }
+        }
+
+        let mut parser = Parser::new();
+        parser
+            .set_language(&tree_sitter_typescript::LANGUAGE_TSX.into())
+            .map_err(|e| anyhow!("loading tsx grammar: {e}"))?;
+        if let Some(tree) = parser.parse(&virtual_src, None) {
+            let mut ex = Ex {
+                src,
+                lang,
+                out: Parsed {
+                    symbols: Vec::new(),
+                    refs: Vec::new(),
+                    imports: Vec::new(),
+                    lines: 0,
+                },
+            };
+            ex.walk(tree.root_node(), None, 0);
+            out.symbols.extend(ex.out.symbols);
+            out.refs.extend(ex.out.refs);
+            out.imports.extend(ex.out.imports);
+        }
+    }
+
+    // 4. Template Component & Event Reference Scanner
+    let mut skip_ranges = script_blocks.clone();
+    skip_ranges.extend_from_slice(&style_blocks);
+    scan_sfc_template(&mut out, src, &skip_ranges);
+
+    // 5. Style blocks
+    #[cfg(feature = "lang-css")]
+    {
+        if !style_blocks.is_empty() {
+            let mut virtual_css = vec![b' '; src.len()];
+            for (i, &b) in src.iter().enumerate() {
+                if b == b'\n' {
+                    virtual_css[i] = b'\n';
+                }
+            }
+            for (start, end) in &style_blocks {
+                if *start < src.len() && *end <= src.len() && *start < *end {
+                    virtual_css[*start..*end].copy_from_slice(&src[*start..*end]);
+                }
+            }
+            let mut parser = Parser::new();
+            parser
+                .set_language(&tree_sitter_css::LANGUAGE.into())
+                .map_err(|e| anyhow!("loading css grammar: {e}"))?;
+            if let Some(tree) = parser.parse(&virtual_css, None) {
+                let mut ex = Ex {
+                    src,
+                    lang: Lang::Css,
+                    out: Parsed {
+                        symbols: Vec::new(),
+                        refs: Vec::new(),
+                        imports: Vec::new(),
+                        lines: 0,
+                    },
+                };
+                walk_css(&mut ex, tree.root_node(), None, 0);
+                out.symbols.extend(ex.out.symbols);
+                out.refs.extend(ex.out.refs);
+                out.imports.extend(ex.out.imports);
+            }
+        }
+    }
+
+    Ok(out)
+}
+
+fn scan_sfc_template(out: &mut Parsed, src: &[u8], skip_ranges: &[(usize, usize)]) {
+    let text = match std::str::from_utf8(src) {
+        Ok(t) => t,
+        Err(_) => return,
+    };
+
+    let is_skipped = |idx: usize| {
+        skip_ranges.iter().any(|(s, e)| idx >= *s && idx < *e)
+    };
+
+    // 1. Tag component usages: <ComponentName (starts with uppercase)
+    let bytes = text.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if is_skipped(i) {
+            i += 1;
+            continue;
+        }
+        if bytes[i] == b'<' {
+            let rest = &text[i + 1..];
+            if let Some(fc) = rest.chars().next() {
+                if fc.is_ascii_uppercase() {
+                    let name_len = rest
+                        .chars()
+                        .take_while(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '.')
+                        .count();
+                    let name = &rest[..name_len];
+                    if !name.is_empty() {
+                        let line = line_at(src, i);
+                        out.refs.push(RefRec {
+                            name: name.to_string(),
+                            qualifier: None,
+                            kind: "call",
+                            line,
+                            arg_count: None,
+                            enclosing: None,
+                            kwargs: None,
+                        });
+                    }
+                }
+            }
+        }
+        i += 1;
+    }
+
+    // 2. Event handler references
+    // Svelte on:click={handleClick} / onclick={handleClick}
+    let svelte_handler_re =
+        Regex::new(r#"(?:on:[a-zA-Z0-9_-]+|on[a-z]+)=\{([a-zA-Z0-9_]+)\}"#).ok();
+    if let Some(ref re) = svelte_handler_re {
+        for m in re.captures_iter(text) {
+            if let Some(cap) = m.get(1) {
+                let start = m.get(0).unwrap().start();
+                if !is_skipped(start) {
+                    let name = cap.as_str();
+                    let line = line_at(src, start);
+                    out.refs.push(RefRec {
+                        name: name.to_string(),
+                        qualifier: None,
+                        kind: "call",
+                        line,
+                        arg_count: None,
+                        enclosing: None,
+                        kwargs: None,
+                    });
+                }
+            }
+        }
+    }
+
+    // Vue @click="handleClick" / v-on:click="handleClick"
+    let vue_handler_re =
+        Regex::new(r#"(?:@[a-zA-Z0-9_-]+|v-on:[a-zA-Z0-9_-]+)="([a-zA-Z0-9_]+)(?:\(.*?\))?""#)
+            .ok();
+    if let Some(ref re) = vue_handler_re {
+        for m in re.captures_iter(text) {
+            if let Some(cap) = m.get(1) {
+                let start = m.get(0).unwrap().start();
+                if !is_skipped(start) {
+                    let name = cap.as_str();
+                    let line = line_at(src, start);
+                    out.refs.push(RefRec {
+                        name: name.to_string(),
+                        qualifier: None,
+                        kind: "call",
+                        line,
+                        arg_count: None,
+                        enclosing: None,
+                        kwargs: None,
+                    });
+                }
+            }
+        }
+    }
+}
+
+fn parse_html(_lang: Lang, src: &[u8]) -> Result<Parsed> {
+    let mut out = Parsed {
+        symbols: Vec::new(),
+        refs: Vec::new(),
+        imports: Vec::new(),
+        lines: count_lines(src),
+    };
+
+    let script_blocks = find_tag_blocks(src, "script");
+    let style_blocks = find_tag_blocks(src, "style");
+
+    // 1. Script blocks
+    if !script_blocks.is_empty() {
+        let mut virtual_src = vec![b' '; src.len()];
+        for (i, &b) in src.iter().enumerate() {
+            if b == b'\n' {
+                virtual_src[i] = b'\n';
+            }
+        }
+        for (start, end) in &script_blocks {
+            if *start < src.len() && *end <= src.len() && *start < *end {
+                virtual_src[*start..*end].copy_from_slice(&src[*start..*end]);
+            }
+        }
+
+        let mut parser = Parser::new();
+        parser
+            .set_language(&tree_sitter_typescript::LANGUAGE_TSX.into())
+            .map_err(|e| anyhow!("loading tsx grammar: {e}"))?;
+        if let Some(tree) = parser.parse(&virtual_src, None) {
+            let mut ex = Ex {
+                src,
+                lang: Lang::JavaScript,
+                out: Parsed {
+                    symbols: Vec::new(),
+                    refs: Vec::new(),
+                    imports: Vec::new(),
+                    lines: 0,
+                },
+            };
+            ex.walk(tree.root_node(), None, 0);
+            out.symbols.extend(ex.out.symbols);
+            out.refs.extend(ex.out.refs);
+            out.imports.extend(ex.out.imports);
+        }
+    }
+
+    // 2. Style blocks
+    #[cfg(feature = "lang-css")]
+    {
+        if !style_blocks.is_empty() {
+            let mut virtual_css = vec![b' '; src.len()];
+            for (i, &b) in src.iter().enumerate() {
+                if b == b'\n' {
+                    virtual_css[i] = b'\n';
+                }
+            }
+            for (start, end) in &style_blocks {
+                if *start < src.len() && *end <= src.len() && *start < *end {
+                    virtual_css[*start..*end].copy_from_slice(&src[*start..*end]);
+                }
+            }
+            let mut parser = Parser::new();
+            parser
+                .set_language(&tree_sitter_css::LANGUAGE.into())
+                .map_err(|e| anyhow!("loading css grammar: {e}"))?;
+            if let Some(tree) = parser.parse(&virtual_css, None) {
+                let mut ex = Ex {
+                    src,
+                    lang: Lang::Css,
+                    out: Parsed {
+                        symbols: Vec::new(),
+                        refs: Vec::new(),
+                        imports: Vec::new(),
+                        lines: 0,
+                    },
+                };
+                walk_css(&mut ex, tree.root_node(), None, 0);
+                out.symbols.extend(ex.out.symbols);
+                out.refs.extend(ex.out.refs);
+                out.imports.extend(ex.out.imports);
+            }
+        }
+    }
+
+    // 3. Element IDs as anchor symbols
+    if let Ok(text) = std::str::from_utf8(src) {
+        let id_re = Regex::new(r#"id=["']([a-zA-Z0-9_-]+)["']"#).ok();
+        if let Some(ref re) = id_re {
+            for m in re.captures_iter(text) {
+                if let Some(cap) = m.get(1) {
+                    let id_val = cap.as_str();
+                    let start = m.get(0).unwrap().start();
+                    let line = line_at(src, start);
+                    let name = format!("#{id_val}");
+                    out.symbols.push(SymbolRec {
+                        name: name.clone(),
+                        qualname: name.clone(),
+                        kind: "id".to_string(),
+                        signature: name,
+                        doc: None,
+                        start_line: line,
+                        end_line: line,
+                        depth: 0,
+                        parent: None,
+                        exported: true,
+                        params: None,
+                        has_self: false,
+                    });
+                }
+            }
+        }
+    }
+
+    Ok(out)
+}
+
+fn parse_css(lang: Lang, src: &[u8]) -> Result<Parsed> {
+    #[cfg(feature = "lang-css")]
+    {
+        let mut parser = Parser::new();
+        parser
+            .set_language(&lang.ts_language())
+            .map_err(|e| anyhow!("loading css grammar: {e}"))?;
+        let tree = parser
+            .parse(src, None)
+            .ok_or_else(|| anyhow!("css parser returned no tree"))?;
+        let mut ex = Ex {
+            src,
+            lang,
+            out: Parsed {
+                symbols: Vec::new(),
+                refs: Vec::new(),
+                imports: Vec::new(),
+                lines: 0,
+            },
+        };
+        walk_css(&mut ex, tree.root_node(), None, 0);
+        ex.out.lines = count_lines(src);
+        Ok(ex.out)
+    }
+    #[cfg(not(feature = "lang-css"))]
+    {
+        let _ = (lang, src);
+        Ok(Parsed {
+            symbols: Vec::new(),
+            refs: Vec::new(),
+            imports: Vec::new(),
+            lines: count_lines(src),
+        })
+    }
+}
+
+fn walk_css(ex: &mut Ex<'_>, node: Node<'_>, parent: Option<usize>, depth: usize) {
+    if depth > 100 {
+        return;
+    }
+    let declared = match node.kind() {
+        "class_selector" => {
+            let text = ex.t(node).trim().to_string();
+            if !text.is_empty() {
+                let doc = ex.leading_doc(node);
+                Some(ex.add(&text, "class", node, text.clone(), doc, parent, true, None, false))
+            } else {
+                None
+            }
+        }
+        "id_selector" => {
+            let text = ex.t(node).trim().to_string();
+            if !text.is_empty() {
+                let doc = ex.leading_doc(node);
+                Some(ex.add(&text, "id", node, text.clone(), doc, parent, true, None, false))
+            } else {
+                None
+            }
+        }
+        "declaration" => {
+            let text = ex.t(node).trim();
+            if text.starts_with("--") {
+                let prop_name = text.split(':').next().unwrap_or(text).trim();
+                let sig = collapse(text.trim_end_matches(';'));
+                Some(ex.add(prop_name, "variable", node, sig, None, parent, true, None, false))
+            } else {
+                None
+            }
+        }
+        "keyframes_statement" => {
+            let raw = ex.t(node).trim();
+            let name = raw
+                .strip_prefix("@keyframes")
+                .and_then(|s| s.split_whitespace().next())
+                .unwrap_or("animation");
+            let sig = format!("@keyframes {name}");
+            Some(ex.add(&sig, "animation", node, sig.clone(), None, parent, true, None, false))
+        }
+        "at_rule" => {
+            let raw = ex.t(node).trim();
+            if raw.starts_with("@import") {
+                if let Some(q) = extract_css_import(raw) {
+                    let line = Ex::line(node);
+                    ex.add_import(&q, &q, None, false, line);
+                }
+                None
+            } else if raw.starts_with("@mixin") {
+                let first_line = raw.lines().next().unwrap_or(raw).trim();
+                let sig = collapse(first_line.trim_end_matches('{').trim());
+                let name = sig.strip_prefix("@mixin").unwrap_or(&sig).trim().to_string();
+                Some(ex.add(&name, "mixin", node, sig, None, parent, true, None, false))
+            } else {
+                None
+            }
+        }
+        _ => None,
+    };
+
+    let np = declared.or(parent);
+    let mut c = node.walk();
+    for ch in node.children(&mut c) {
+        walk_css(ex, ch, np, depth + 1);
+    }
+}
+
+fn extract_css_import(s: &str) -> Option<String> {
+    let after = s.strip_prefix("@import")?.trim();
+    if let Some(u) = after.strip_prefix("url(") {
+        let inside = u.split(')').next()?.trim().trim_matches('"').trim_matches('\'');
+        return Some(inside.to_string());
+    }
+    let quote = after.chars().next()?;
+    if quote == '"' || quote == '\'' {
+        let rest = &after[1..];
+        let end = rest.find(quote)?;
+        return Some(rest[..end].to_string());
+    }
+    None
 }

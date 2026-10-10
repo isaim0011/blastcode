@@ -1,6 +1,6 @@
 [package]
 name = "blastcode"
-version = "0.2.1"
+version = "0.3.0"
 edition = "2021"
 rust-version = "1.75"
 description = "Incremental code-graph MCP server and blast-radius engine for AI coding agents: file skeletons, call graphs, and impact analysis."
@@ -43,17 +43,21 @@ tree-sitter-c = { version = "0.23", optional = true }
 tree-sitter-cpp = { version = "0.23", optional = true }
 tree-sitter-php = { version = "0.23", optional = true }
 tree-sitter-ruby = { version = "0.23", optional = true }
+tree-sitter-html = { version = "0.23", optional = true }
+tree-sitter-css = { version = "=0.23.1", optional = true }
 
 [features]
 # Each extra grammar is optional so a single grammar problem never blocks a build:
 #   cargo build --no-default-features --features lang-java
-default = ["lang-java", "lang-csharp", "lang-c", "lang-cpp", "lang-php", "lang-ruby"]
+default = ["lang-java", "lang-csharp", "lang-c", "lang-cpp", "lang-php", "lang-ruby", "lang-html", "lang-css"]
 lang-java = ["dep:tree-sitter-java"]
 lang-csharp = ["dep:tree-sitter-c-sharp"]
 lang-c = ["dep:tree-sitter-c"]
 lang-cpp = ["dep:tree-sitter-cpp"]
 lang-php = ["dep:tree-sitter-php"]
 lang-ruby = ["dep:tree-sitter-ruby"]
+lang-html = ["dep:tree-sitter-html"]
+lang-css = ["dep:tree-sitter-css"]
 
 [dev-dependencies]
 tempfile = "3"

@@ -14,6 +14,12 @@ pub enum Lang {
     Cpp,
     Php,
     Ruby,
+    Svelte,
+    Vue,
+    Astro,
+    Html,
+    Css,
+    Scss,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -27,6 +33,9 @@ pub enum Family {
     C,
     Php,
     Ruby,
+    Sfc,
+    Html,
+    Css,
 }
 
 impl Lang {
@@ -52,6 +61,12 @@ impl Lang {
             "h" if cfg!(feature = "lang-c") => Some(Lang::C),
             "php" if cfg!(feature = "lang-php") => Some(Lang::Php),
             "rb" if cfg!(feature = "lang-ruby") => Some(Lang::Ruby),
+            "svelte" => Some(Lang::Svelte),
+            "vue" => Some(Lang::Vue),
+            "astro" => Some(Lang::Astro),
+            "html" | "htm" if cfg!(feature = "lang-html") => Some(Lang::Html),
+            "css" if cfg!(feature = "lang-css") => Some(Lang::Css),
+            "scss" | "sass" | "less" if cfg!(feature = "lang-css") => Some(Lang::Scss),
             _ => None,
         }
     }
@@ -70,6 +85,12 @@ impl Lang {
             Lang::Cpp => "cpp",
             Lang::Php => "php",
             Lang::Ruby => "ruby",
+            Lang::Svelte => "svelte",
+            Lang::Vue => "vue",
+            Lang::Astro => "astro",
+            Lang::Html => "html",
+            Lang::Css => "css",
+            Lang::Scss => "scss",
         }
     }
 
@@ -84,6 +105,9 @@ impl Lang {
             Lang::C | Lang::Cpp => Family::C,
             Lang::Php => Family::Php,
             Lang::Ruby => Family::Ruby,
+            Lang::Svelte | Lang::Vue | Lang::Astro => Family::Sfc,
+            Lang::Html => Family::Html,
+            Lang::Css | Lang::Scss => Family::Css,
         }
     }
 
@@ -96,7 +120,9 @@ impl Lang {
         match self {
             Lang::Python => tree_sitter_python::LANGUAGE.into(),
             Lang::TypeScript => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
-            Lang::Tsx => tree_sitter_typescript::LANGUAGE_TSX.into(),
+            Lang::Tsx | Lang::Svelte | Lang::Vue | Lang::Astro => {
+                tree_sitter_typescript::LANGUAGE_TSX.into()
+            }
             Lang::JavaScript => tree_sitter_javascript::LANGUAGE.into(),
             Lang::Rust => tree_sitter_rust::LANGUAGE.into(),
             Lang::Go => tree_sitter_go::LANGUAGE.into(),
@@ -106,6 +132,8 @@ impl Lang {
             Lang::Cpp => cpp_lang(),
             Lang::Php => php_lang(),
             Lang::Ruby => ruby_lang(),
+            Lang::Html => html_lang(),
+            Lang::Css | Lang::Scss => css_lang(),
         }
     }
 }
@@ -163,3 +191,22 @@ fn ruby_lang() -> Language {
 fn ruby_lang() -> Language {
     unreachable!("ruby support disabled at build time")
 }
+
+#[cfg(feature = "lang-html")]
+fn html_lang() -> Language {
+    tree_sitter_html::LANGUAGE.into()
+}
+#[cfg(not(feature = "lang-html"))]
+fn html_lang() -> Language {
+    unreachable!("html support disabled at build time")
+}
+
+#[cfg(feature = "lang-css")]
+fn css_lang() -> Language {
+    tree_sitter_css::LANGUAGE.into()
+}
+#[cfg(not(feature = "lang-css"))]
+fn css_lang() -> Language {
+    unreachable!("css support disabled at build time")
+}
+

@@ -118,8 +118,8 @@ pub fn impact_report(
         .to_string());
     };
 
-    let old_p = extract::parse(lang, old_text.as_bytes())?;
-    let new_p = extract::parse(lang, new_text.as_bytes())?;
+    let old_p = extract::parse_with_path(lang, old_text.as_bytes(), Some(rel))?;
+    let new_p = extract::parse_with_path(lang, new_text.as_bytes(), Some(rel))?;
 
     // In overloadable languages (Java, C#, C/C++) methods sharing a name are distinct
     // symbols, so identity includes the parameter count.

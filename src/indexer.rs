@@ -151,7 +151,7 @@ fn process(e: &Entry, old_hash: Option<&str>) -> Outcome {
     if old_hash == Some(hash.as_str()) {
         return Outcome::Touch { path: e.rel.clone(), mtime: e.mtime, size: e.size as i64 };
     }
-    let parsed = catch_unwind(AssertUnwindSafe(|| extract::parse(e.lang, &bytes)));
+    let parsed = catch_unwind(AssertUnwindSafe(|| extract::parse_with_path(e.lang, &bytes, Some(&e.rel))));
     match parsed {
         Ok(Ok(p)) => Outcome::Parsed(
             FileData {

@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.3.0] - 2026-10-11
+
+### Added
+- **Frontend Single-File Component (SFC) & Web Template Engine**:
+  - **Svelte (`.svelte`)**: First-class support for Svelte 3, 4, and 5 runes (`$props()`, `$state()`, `$derived()`, `export let`). Extracts component definitions, props, reactive state, script functions, template component tags (`<Header />`), and event bindings (`on:click`, `onclick`).
+  - **Vue (`.vue`)**: Full support for Vue 2 & 3 SFCs (`<script setup>`, `defineProps`, `defineEmits`, `ref`, `computed`, and Options API). Extracts template component instances and event directives (`@click`, `v-on:`).
+  - **Astro (`.astro`)**: Native parsing of component frontmatter fences (`---` ... `---`), `interface Props`, `Astro.props`, client scripts, and layout/component tags.
+  - **HTML (`.html`, `.htm`)**: Extracts embedded `<script>` blocks (functions, variables, imports), embedded `<style>` blocks, and DOM element anchor IDs (`id="..."`).
+  - **CSS / SCSS (`.css`, `.scss`, `.sass`, `.less`)**: Multi-rule AST indexing via `tree-sitter-css`. Extracts class selectors (`.btn-primary`), ID selectors (`#app`), CSS custom variables (`--primary-color`), `@keyframes` animations, and SCSS `@mixin` blocks.
+- **Cross-Component Call-Graph & Blast-Radius Tracing**:
+  - Component usages in templates (`<ChildComponent />`) are automatically indexed as call-graph edges.
+  - When a component is modified, `blast impact` and `blast trace` immediately identify all parent components that instantiate it.
+- **Token-Lean Web Skeletons**:
+  - Replaces massive 500-1500 line template files and thousands of lines of CSS with 20-50 token architectural skeletons with exact line numbers, saving massive agent context and token budgets.
+
 ## [0.2.1] - 2026-10-09
 
 ### Added

@@ -8,7 +8,7 @@ use serde_json::json;
 use tree_sitter::{Node, Parser};
 
 use crate::extract;
-use crate::lang::Lang;
+use crate::lang::{Family, Lang};
 use crate::model::arity;
 
 #[derive(Debug, serde::Serialize)]
@@ -86,10 +86,12 @@ pub fn verify_patch(
 
     // 1. Syntax Error Extraction
     let mut syntax_errors = Vec::new();
-    collect_syntax_errors(tree.root_node(), src, &mut syntax_errors, 10);
+    if lang.family() != Family::Sfc {
+        collect_syntax_errors(tree.root_node(), src, &mut syntax_errors, 10);
+    }
 
     // 2. Symbol & Reference Extraction
-    let parsed_res = extract::parse(lang, src);
+    let parsed_res = extract::parse_with_path(lang, src, Some(&norm_path));
     let mut arity_mismatches = Vec::new();
     let mut symbols_count = 0;
     let mut calls_count = 0;
