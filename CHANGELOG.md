@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.3.1] - 2026-10-11
+
+### Documentation & Packaging
+- Synchronized comprehensive Keep-a-Changelog release notes across all ecosystem surfaces (GitHub, crates.io, PyPI, npm, Open VSX, VS Code extension).
+- Updated ecosystem roadmap reflecting completed publications.
+
 ## [0.3.0] - 2026-10-11
 
 ### Added
