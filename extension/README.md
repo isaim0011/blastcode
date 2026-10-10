@@ -197,11 +197,14 @@ blast watch                     # Live terminal stream of AST-level changes
 ## 🗺️ Universal Ecosystem Roadmap
 
 - [x] **v0.1.0**: Core Rust engine, 10 languages, MCP server, CLI (`blast`).
-- [ ] **crates.io**: Official publication under `blastcode`.
-- [ ] **PyPI / uv**: `pip install blastcode` / `uvx blastcode serve`.
-- [ ] **npm / npx**: `npx blastcode serve`.
-- [ ] **Homebrew Tap**: `brew install isaim0011/tap/blastcode`.
-- [ ] **VS Code / Cursor Extension**: Embedded companion status and auto-launch.
+- [x] **v0.2.0 & v0.2.1**: Grep engine, patch verification, affected tests, struct fields & fuzzy normalization.
+- [x] **v0.3.0**: Frontend SFC & Web Template Engine (Svelte 5 runes, Vue 3, Astro, HTML, CSS/SCSS).
+- [x] **crates.io**: Official publication under [`blastcode`](https://crates.io/crates/blastcode).
+- [x] **PyPI / uv**: `pip install blastcode` / `uvx blastcode serve`.
+- [x] **npm / npx**: `npx blastcode serve`.
+- [x] **Homebrew Tap**: `brew install isaim0011/tap/blastcode`.
+- [x] **Open VSX Registry**: [`isaim0011/blastcode-vscode`](https://open-vsx.org/extension/isaim0011/blastcode-vscode).
+- [x] **VS Code / Cursor Extension**: Embedded companion status and auto-launch.
 
 ---
 
